@@ -43,9 +43,9 @@ IDLE → SPIN → GUESS → REVEAL → SCORE → NEXT_ROUND (or GAME_OVER).
 
 # Interface Architecture
 
-1.Interface structure (state machine, events, timing).
-2.Game structure (rounds, target color, scoring, difficulty).
-3.Hardware particularities (keyboard fallback， dual-pointer joystick).
+1. Interface structure (state machine, events, timing).
+2. Game structure (rounds, target color, scoring, difficulty).
+3. Hardware particularities (keyboard fallback， dual-pointer joystick).
 
 ## Logic
 All main parts are objects:
@@ -104,8 +104,8 @@ No velocity/physics, just a boolean event.
 
 **Physical pointer**
 Poll two analog channels (one per physical pointer), map to hue deltas:
-Δhue = k * analogDelta (wrap 0–360).
-Debounce / dead-zone small jitter.
+   - Δhue = k * analogDelta (wrap 0–360).
+   - Debounce / dead-zone small jitter.
 
 HardwareAdapter emits the same move(step) calls used by keyboard.
 
@@ -119,7 +119,7 @@ Frames are created, manipulated and stored in the array:
 this.displayBuffer = [];
 ```
 
-Only show() draws::
+Only show() draws:
 
 ```javascript
 show() {
@@ -148,12 +148,12 @@ The state machine for the 1D Interface looks like this:
    └────────────────────────────────────────────── game over (rounds reached) ◀────────┘
 
 ```
-· IDLE: Show title/instructions.
-· SPIN: Triggered by gear turn or R; wheel “spins” visually and lands on a random top hue.
-· GUESS: Players move their markers (keyboard/joystick). Countdown shown.
-· REVEAL: Wheel unmasks; show target & guesses; animate distances.
-· SCORE: Apply circular distance scoring; update totals.
-· NEXT_ROUND: Increase difficulty, loop back or end.
+   - IDLE: Show title/instructions.
+   - SPIN: Triggered by gear turn or R; wheel “spins” visually and lands on a random top hue.
+   - GUESS: Players move their markers (keyboard/joystick). Countdown shown.
+   - REVEAL: Wheel unmasks; show target & guesses; animate distances.
+   - SCORE: Apply circular distance scoring; update totals.
+   - NEXT_ROUND: Increase difficulty, loop back or end.
 
 It uses a switch statement to separate and transition between each individual state. The switch statement is called at every single frame by the main 
 
@@ -238,17 +238,17 @@ updateSpin() {
 ## Animations
 
 **Reveal animation**
-· Radial wipe reveals the whole wheel.
-· Distance arcs grow from each player’s marker to the hidden target hue.
-· Quick color wash toward the leading player, then settle to HUD.
+   - Radial wipe reveals the whole wheel.
+   - Distance arcs grow from each player’s marker to the hidden target hue.
+   - Quick color wash toward the leading player, then settle to HUD.
 
 # What we should do next...
 
 1. Read Daniel's code and Try to make some modifications, for example:
-   * Change the color of a player
-   * Make the display longer
-   * Add more players or more targets
-   * Add a new state to the game
+   - Change the color of a player
+   - Make the display longer
+   - Add more players or more targets
+   - Add a new state to the game
      
    p5js tutorial [Coding Train](https://www.youtube.com/playlist?list=PLRqwX-V7Uu6Zy51Q-x9tMWIv9cueOFTFA)
 
