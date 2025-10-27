@@ -1,136 +1,150 @@
-
 // This is where your state machines and game logic lives
-
 
 class Controller {
 
-    // This is the state we start with.
-    constructor() {
-        this.gameState = "PLAY";
+  constructor() {
+    this.gameState = "IDLE";
+    this.round = 1;
+
+    this.cfg = gameConfig;
+
+    this.mixStartMs = 0;
+    this.mixDurationMs = this.cfg.spinDurationMs;
+    this.guessEndMs = 0;
+
+    this.targetHue = 0;
+
+    this._gearTriggerLatched = false;
+  }
+
+  latchGearTrigger() {
+    this._gearTriggerLatched = true;
+  }
+
+  gearTriggeredOnce() {
+    if (this._gearTriggerLatched) {
+      this._gearTriggerLatched = false;
+      return true;
     }
-    
-    // This is called from draw() in sketch.js with every frame
-    update() {
+    return false;
+  }
 
-        // STATE MACHINE ////////////////////////////////////////////////
-        // This is where your game logic lives
-        /////////////////////////////////////////////////////////////////
-        switch(this.gameState) {
+  startMix() {
+    this.targetHue = random(0, 360);
+    this.mixStartMs = millis();
+    this.mixDurationMs = this.cfg.spinDurationMs;
 
-            // This is the main game state, where the playing actually happens
-            case "PLAY":
+    const t = this.cfg.guessTimeMsByRound[Math.min(this.round-1, this.cfg.guessTimeMsByRound.length-1)];
+    this.guessEndMs = millis() + t;
 
-                // clear screen at frame rate so we always start fresh      
-                display.clear();
-            
-                // show all players in the right place, by adding them to display buffer
-                display.setPixel(playerOne.position, playerOne.playerColor);
-                display.setPixel(playerTwo.position, playerTwo.playerColor);
-                
-                
-                // now add the target
-                display.setPixel(target.position, target.playerColor);
+    this.gameState = "MIX";
+  }
 
-                
-                // check if player has caught target
-                if (playerOne.position == target.position)  {
-                    playerOne.score++;              // increment score
-                    this.gameState = "COLLISION";   // go to COLLISION state
-                }
-                
-                // check if other player has caught target        
-                if (playerTwo.position == target.position)  {
-                    playerTwo.score++;              // increment their score
-                    this.gameState = "COLLISION";   // go to COLLISION state
-                }
+  hueCircularDistance(h1, h2) {
+    const d = Math.abs(h1 - h2) % 360;
+    return Math.min(d, 360 - d);
+  }
 
-                break;
+  inverseScore(distDeg) {
+    const sMax = this.cfg.S_MAX;
+    return Math.round(Math.max(0, sMax * (1 - distDeg / 180)));
+  }
 
-            // This state is used to play an animation, after a target has been caught by a player 
-            case "COLLISION":
-                
-                 // clear screen at frame rate so we always start fresh      
-                 display.clear();
+  posToHue(pos) {
+    return (pos % displaySize) * (360 / displaySize);
+  }
 
-                // play explosion animation one frame at a time.
-                // first figure out what frame to show
-                let frameToShow = collisionAnimation.currentFrame();    // this grabs number of current frame and increments it 
-                
-                // then grab every pixel of frame and put it into the display buffer
-                for(let i = 0; i < collisionAnimation.pixels; i++) {
-                    display.setPixel(i,collisionAnimation.animation[frameToShow][i]);                    
-                }
-
-                //check if animation is done and we should move on to another state
-                if (frameToShow == collisionAnimation.animation.length-1)  {
-                    
-                    // We've hit score max, this player wins
-                    if (playerOne.score >= score.max) {
-                        score.winner = playerOne.playerColor;   // store winning color in score.winner
-                        this.gameState = "SCORE";               // go to state that displays score
-                    
-                    // We've hit score max, this player wins
-                    } else if (playerTwo.score >= score.max) {
-                        score.winner = playerTwo.playerColor;   // store winning color in score.winner
-                        this.gameState = "SCORE";               // go to state that displays score
-
-                    // We haven't hit the max score yet, keep playing    
-                    } else {
-                        target.position = parseInt(random(0,displaySize));  // move the target to a new random position
-                        this.gameState = "PLAY";    // back to play state
-                    }
-                } 
-
-                break;
-
-            // Game is over. Show winner and clean everything up so we can start a new game.
-            case "SCORE":       
-            
-                // reset everyone's score
-                playerOne.score = 0;
-                playerTwo.score = 0;
-
-                // put the target somewhere else, so we don't restart the game with player and target in the same place
-                target.position = parseInt(random(1,displaySize));
-
-                //light up w/ winner color by populating all pixels in buffer with their color
-                display.setAllPixels(score.winner);                    
-
-                break;
-
-            // Not used, it's here just for code compliance
-            default:
-                break;
+  update() {
+    switch (this.gameState) {
+      case "IDLE": {
+        display.clear();
+        if (this.gearTriggeredOnce()) {
+          this.startMix();
         }
+        break;
+      }
+
+      case "MIX": {
+        display.clear();
+        if (millis() - this.mixStartMs >= this.mixDurationMs) {
+          this.gameState = "GUESS";
+        }
+        break;
+      }
+
+      case "GUESS": {
+        display.clear();
+        display.setPixel(playerOne.position, playerOne.playerColor);
+        display.setPixel(playerTwo.position, playerTwo.playerColor);
+
+        if (millis() >= this.guessEndMs) {
+          this.gameState = "REVEAL";
+        }
+        break;
+      }
+
+      case "REVEAL": {
+        const p1Hue = this.posToHue(playerOne.position);
+        const p2Hue = this.posToHue(playerTwo.position);
+
+        const d1 = this.hueCircularDistance(p1Hue, this.targetHue);
+        const d2 = this.hueCircularDistance(p2Hue, this.targetHue);
+
+        playerOne.score += this.inverseScore(d1);
+        playerTwo.score += this.inverseScore(d2);
+
+        this.gameState = "SCORE";
+        break;
+      }
+
+      case "SCORE": {
+        if (this.round >= this.cfg.maxRounds) {
+          score.winner = (playerOne.score >= playerTwo.score) ? playerOne.playerColor : playerTwo.playerColor;
+          display.setAllPixels(score.winner);
+
+          this.gameState = "IDLE";
+          this.round = 1;
+          playerOne.score = 0;
+          playerTwo.score = 0;
+        } else {
+          this.round++;
+          this.gameState = "IDLE";
+        }
+        break;
+      }
+
+      default:
+        break;
     }
+  }
 }
 
 
-
-
-// This function gets called when a key on the keyboard is pressed
+// ---------- Keyboard fallback ----------
 function keyPressed() {
-
-    // Move player one to the left if letter A is pressed
-    if (key == 'A' || key == 'a') {
-        playerOne.move(-1);
-      }
-    
-    // And so on...
-    if (key == 'D' || key == 'd') {
-    playerOne.move(1);
-    }    
-
-    if (key == 'J' || key == 'j') {
-    playerTwo.move(-1);
-    }
-    
-    if (key == 'L' || key == 'l') {
-    playerTwo.move(1);
-    }
-    
-    // When you press the letter R, the game resets back to the play state
-    if (key == 'R' || key == 'r') {
-    controller.gameState = "PLAY";
-    }
+  if (controller.gameState === "GUESS") {
+    if (key === 'A' || key === 'a') playerOne.move(-1);
+    if (key === 'D' || key === 'd') playerOne.move(1);
+    if (key === 'J' || key === 'j') playerTwo.move(-1);
+    if (key === 'L' || key === 'l') playerTwo.move(1);
   }
+
+  if (key === 'R' || key === 'r') {
+    controller.latchGearTrigger();
+  }
+}
+
+
+// ---------- Serial input hook ----------
+function onSerialData(data) {
+  let msg = data.trim();
+  if (msg === "G") {
+    controller.latchGearTrigger(); // 旋转编码器触发
+  }
+}
+//硬件提示（旋转编码器）
+//接线：
+//CLK → D2
+//DT → D3
+//VCC → 5V
+//GND → GND
