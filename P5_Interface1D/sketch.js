@@ -1,60 +1,76 @@
 /* /////////////////////////////////////
 
   DESIGN 6397: Design for Physical Interaction
-  February 9, 2024
-  Marcelo Coelho
+  October 27, 2025
+  Xiaoxi Xu
 
 */ /////////////////////////////////////
 
 
-let displaySize = 30;   // how many pixels are visible in the game
-let pixelSize = 30;     // how big each 'pixel' looks on screen
+// ====== Game Canvas / Display ======
+let displaySize = 30;   // number of columns (1D "pixels")
+let pixelSize   = 30;   // visual size of each pixel
 
-let playerOne;    // Adding 2 players to the game
-let playerTwo;
-let target;       // and one target for players to catch.
+// ====== Core Objects ======
+let playerOne;          // Red player
+let playerTwo;          // Blue player
+let target;             // Random target hue (per round)
 
-let display;      // Aggregates our final visual output before showing it on the screen
+let display;            // Aggregates frame before showing
+let controller;         // State machine & game logic
+let collisionAnimation; // Reveal / feedback animations (placeholder)
+let score;              // Score & winner tracking
 
-let controller;   // This is where the state machine and game logic lives
-
-let collisionAnimation;   // Where we store and manage the collision animation
-
-let score;        // Where we keep track of score and winner
-
-
+// ====== Game Config (for the new color-wheel guessing game) ======
+let gameConfig = {
+  maxRounds: 6,
+  // wheel difficulty: more segments each round
+  segmentsByRound: [12, 16, 24, 32, 48, 72],
+  // guessing time per round (ms)
+  guessTimeMsByRound: [6000, 5500, 5000, 4500, 4000, 3500],
+  // scoring
+  S_MAX: 100,          // max points for exact match
+  // MIX / SPIN (triggered by physical gear or 'R' key) uses a fixed-time animation
+  spinDurationMs: 1500 // time-based animation, no physics
+};
 
 function setup() {
+  createCanvas(displaySize * pixelSize, pixelSize); // 1D interface
 
-  createCanvas((displaySize*pixelSize), pixelSize);     // dynamically sets canvas size
+  // Initialize display
+  display = new Display(displaySize, pixelSize);
 
-  display = new Display(displaySize, pixelSize);        //Initializing the display
+  // Initialize players (use RED & BLUE as per new spec)
+  // position is an index on the 1D ring (0..displaySize-1)
+  playerOne = new Player(color(255, 0, 0),   parseInt(random(0, displaySize)), displaySize);
+  playerTwo = new Player(color(0, 0, 255),   parseInt(random(0, displaySize)), displaySize);
 
-  playerOne = new Player(color(255,255,255), parseInt(random(0,displaySize)), displaySize);   // Initializing players
-  playerTwo = new Player(color(0,0,255), parseInt(random(0,displaySize)), displaySize);
+  // Target starts as YELLOW (visual only); its hue/position will be randomized per round
+  target    = new Player(color(255, 255, 0), parseInt(random(0, displaySize)), displaySize);
 
-  target = new Player(color(255,255,0), parseInt(random(0,displaySize)), displaySize);    // Initializing target using the Player class 
+  // Animations container (reveal, wipes, etc.)
+  collisionAnimation = new Animation();
 
-  collisionAnimation = new Animation();     // Initializing animation
+  // Controller (state machine lives here; will consume `gameConfig`)
+  controller = new Controller();
+  controller.gameConfig = gameConfig; // expose config to controller
 
-  controller = new Controller();            // Initializing controller
+  // Score tracking (winner color used for screen wash)
+  score = { max: gameConfig.maxRounds, winner: color(0, 0, 0) };
 
-  score = {max:3, winner:color(0,0,0)};     // score stores max number of points, and color 
-
+  // Optional: consistent frame rate for smoother UI
+  // frameRate(60);
 }
 
 function draw() {
+  // Clear background
+  background(0);
 
-  // start with a blank screen
-  background(0, 0, 0);    
-
-  // Runs state machine at determined framerate
+  // Update state machine (IDLE → MIX → GUESS → REVEAL → SCORE → NEXT_ROUND)
   controller.update();
 
-  // After we've updated our states, we show the current one 
+  // Render current frame (Display is the only place that writes to screen)
   display.show();
-
-
 }
 
 
