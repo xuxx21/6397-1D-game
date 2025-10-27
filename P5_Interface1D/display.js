@@ -2,7 +2,6 @@
 // First we populate display and then we show it to user.
 // This is particularly helpful once you start outputting your game to an LED strip, of if you want to have two separate 'screens'
 
-
 class Display {
 
   constructor(_displaySize, _pixelSize) {
@@ -147,6 +146,38 @@ class Display {
     pop();
   }
 
+  // ===== 新增：环形倒计时（用于 REVEAL 停留） =====
+  drawRevealTimer(cx, cy, totalMs, endMs) {
+    if (!totalMs || !endMs) return;
+    const now = millis();
+    const remain = Math.max(0, endMs - now);
+    const t = constrain(1.0 - (remain / totalMs), 0, 1); // 0→1 代表进度
+
+    // 外圈进度环
+    const outerR = this.wheelRadiusOuter + 30;
+    const thickness = 8;
+
+    // 背景环
+    noFill();
+    stroke(255, 40);
+    strokeWeight(thickness);
+    arc(cx, cy, outerR * 2, outerR * 2, -HALF_PI, -HALF_PI + TWO_PI);
+
+    // 进度环（顺时针）
+    stroke(255);
+    strokeWeight(thickness);
+    arc(cx, cy, outerR * 2, outerR * 2, -HALF_PI, -HALF_PI + t * TWO_PI);
+
+    // 文本
+    noStroke();
+    fill(255);
+    textAlign(CENTER, CENTER);
+    textSize(16);
+    text(`${(remain/1000).toFixed(1)}s`, cx, cy - outerR - 14);
+    textSize(12);
+    text(`Revealing…`, cx, cy - outerR - 30);
+  }
+
   drawRevealOverlay(cx, cy, targetHue, p1Hue, p2Hue) {
     // 目标 & 两名玩家到目标的弧线
     const drawArcTo = (fromHue, toHue, col) => {
@@ -213,7 +244,7 @@ class Display {
 
     switch (controller?.gameState) {
       case "IDLE": {
-        // 背景淡色盘（淡淡可见） + 文本提示
+        // 淡色盘（低饱和/亮度） + 提示
         this.drawWheelFull(cx, cy, segments, 0, 60, 30, 60);
         this.drawHUD(controller.round, p1Score, p2Score, null);
 
@@ -227,20 +258,17 @@ class Display {
       }
 
       case "MIX": {
-        // 旋转动画：由 controller.mixStartMs / mixDurationMs 推进
+        // 旋转动画（固定时长缓停），只显示顶端窗口
         const t = constrain((millis() - controller.mixStartMs) / controller.mixDurationMs, 0, 1);
         const e = this.easeOutCubic(t);
 
-        // 设定一个从随机角度 A0 → A1 的路径（只作为视觉旋转；实际目标色已在 controller 里随机）
-        // 为了稳定，这里用 targetHue 作为 A1（使顶端窗口色与 targetHue 有一致性）
+        // 以 targetHue 作为最终视觉对齐，让顶端窗口的色与目标一致
         const a0 = 0;
         const a1 = (controller.targetHue || 0);
         const rotationDeg = lerp(a0, a1, e);
 
-        // 只显示顶端窗口（其余隐藏）
-        // 先画一个淡淡的轮廓（可选）
+        // 淡淡轮廓 + 顶端窗口
         this.drawWheelFull(cx, cy, segments, rotationDeg, 60, 12, 35);
-        // 顶端窗口（真正可见的仅此）
         this.drawTopWindow(cx, cy, rotationDeg, this.topWindowArcDeg);
 
         this.drawHUD(controller.round, p1Score, p2Score, null);
@@ -248,7 +276,7 @@ class Display {
       }
 
       case "GUESS": {
-        // 显示灰色轮廓（不显示真实颜色），只让玩家靠感觉/记忆定位
+        // 灰色轮廓，隐藏真实颜色
         push();
         noFill();
         stroke(120);
@@ -259,13 +287,13 @@ class Display {
         ellipse(cx, cy, this.wheelRadiusInner * 2, this.wheelRadiusInner * 2);
         pop();
 
-        // 画两名玩家的指针（基于 position→色相）
+        // 玩家指针
         const p1Hue = this.posToHue(playerOne.position);
         const p2Hue = this.posToHue(playerTwo.position);
         this.drawMarkerAtHue(cx, cy, p1Hue, color(255, 0, 0), "P1");
         this.drawMarkerAtHue(cx, cy, p2Hue, color(0, 120, 255), "P2");
 
-        // 倒计时 HUD
+        // 倒计时（GUESS 阶段）
         const msLeft = controller.timeLeft ? controller.timeLeft() : null;
         this.drawHUD(controller.round, p1Score, p2Score, msLeft);
         break;
@@ -273,8 +301,7 @@ class Display {
 
       case "REVEAL": {
         // 完整色轮 + 目标 & 两位玩家 + 弧线距离
-        const rotationDeg = 0; // 揭示时固定
-        this.drawWheelFull(cx, cy, segments, rotationDeg, 100, 100, 255);
+        this.drawWheelFull(cx, cy, segments, 0, 100, 100, 255);
 
         const p1Hue = this.posToHue(playerOne.position);
         const p2Hue = this.posToHue(playerTwo.position);
@@ -282,22 +309,23 @@ class Display {
 
         this.drawRevealOverlay(cx, cy, targetHue, p1Hue, p2Hue);
         this.drawHUD(controller.round, p1Score, p2Score, null);
+
+        // === 新增：REVEAL 停留时间提示（环形倒计时 + 文本） ===
+        const total = controller?.revealDurationMs || 0;
+        const endMs = controller?.revealEndMs || 0;
+        this.drawRevealTimer(cx, cy, total, endMs);
+
         break;
       }
 
       case "SCORE": {
-        // 与原有 setAllPixels 兼容：如果之前 controller 已经把 buffer 设为赢家色，这里依旧会显示
-        // 另外在底部显示 Winner 提示
-        // 用 buffer 方式画：保持 show() 的原写入语义
-        // ——下方将 buffer 画为水平条（兼容），同时再覆盖一个简单的 winner 文本
-        // （如果你想只显示整屏铺色，也可以在 sketch 里只调用 setAllPixels）
-        // 先把 buffer 条画出来：
+        // 兼容原有 buffer 的整屏铺色 + HUD
         for (let i = 0; i < this.displaySize; i++) {
           fill(this.displayBuffer[i]);
           rect(i * this.pixelSize, 0, this.pixelSize, this.pixelSize);
         }
 
-        // 再覆盖一层半透明背景 + HUD
+        // 半透明遮罩
         push();
         fill(0, 180);
         noStroke();
@@ -325,4 +353,4 @@ class Display {
       }
     }
   }
-}
+} 
