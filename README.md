@@ -13,12 +13,27 @@ Its simplicity provides a great platform for learning some of the fundamental id
 2. Install Chrome
 3. Download this game.
 4. Run it by dragging/dropping the entire folder in Visual Studio Code and clicking on the 'Go Live' button at the bottom right of the screen.
-5. Instructions for playing the game:
-   - Keyboard keys **A** and **D** move Red Player left and right.
-   - Keys **J** and **L** move Blue Player.
-   - First player to catch the Yellow Target 3 times wins.
-   - Winning color takes over the screen.
-   - Press **R** for re-starting the game.
+5. **Instructions for Playing the Game**
+- Start a Round
+  Twist the physical gear (or press **R**) to trigger the color wheel spin.
+- Move Your Marker 
+  - Red Player: use **A** (left) and **D** (right).  
+  - Blue Player: use **J** (left) and **L** (right).  
+  - Players can also use the physical red/blue pointers.
+- Target Selection  
+  Each round, the system randomly assigns a hidden target hue on the color wheel.  
+  When the wheel spins and stops, only the **top window** is visible.
+- Scoring  
+  After the countdown ends, the full wheel is revealed.  
+  Scores are calculated by the circular distance between each player’s guess and the target hue:  
+  - Closer guess = higher score  
+  - Exact match = max points
+- Winning
+  After the set number of rounds, the player with the higher total score wins.  
+  The winning color fills the screen.
+- Restart  
+  Press **R** or twist the gear again to start a new game.
+
 
 
 # Concepts
@@ -51,35 +66,34 @@ IDLE → SPIN → GUESS → REVEAL → SCORE → NEXT_ROUND (or GAME_OVER).
 All main parts are objects:
 
 **Player**
-Data: id, name, huePosition (0–360), score.
-Methods: move(step), setTo(hue), resetRound().
+- Data: id, name, huePosition (0–360), score.
+- Methods: move(step), setTo(hue), resetRound().
 
 **Target**
-Data: hue (random each round),segments (difficulty), visibleTopHue.
-Methods: randomize(), reveal(),spinAndSetTopHue(), maskExceptTop().
+- Data: hue (random each round),segments (difficulty), visibleTopHue.
+- Methods: randomize(), reveal(),spinAndSetTopHue(), maskExceptTop().
 
 **Controller**
 Owns the state machine, timers, and difficulty ramp.
-Data: gameState, round, maxRounds, guessTimeMs, segments.
-Methods: update(), nextState(), scoreRound(), triggerSpin() (gear turn or R key), pollJoystick(), handleKey().
+- Data: gameState, round, maxRounds, guessTimeMs, segments.
+- Methods: update(), nextState(), scoreRound(), triggerSpin() (gear turn or R key), pollJoystick(), handleKey().
 
 **Display**
-Renders wheel, masked view, two player markers, timers, and reveal/score animations.
-displayBuffer is the only thing that writes to screen.
+- Renders wheel, masked view, two player markers, timers, and reveal/score animations.
+- displayBuffer is the only thing that writes to screen.
 
 **Scoring (inverse proportional on circular hue)**
-Circular distance:
+- Circular distance:
 dist = min( abs(h1 - h2), 360 - abs(h1 - h2) )
-
-Inverse score:
+- Inverse score:
 score = round( max(0, S_max * (1 - dist / 180)) )
-
 S_max = max points (e.g., 100). Exact match (dist=0) gives full points.
 
 **Difficulty Progression**
+
 Across rounds increase:
-segments (finer wheel granularity).
-guessTimeMs decreases.
+- segments (finer wheel granularity).
+- guessTimeMs decreases.
 
 ## Input
 
