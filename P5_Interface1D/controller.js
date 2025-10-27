@@ -138,13 +138,20 @@ function keyPressed() {
 // ---------- Serial input hook ----------
 function onSerialData(data) {
   let msg = data.trim();
+
   if (msg === "G") {
-    controller.latchGearTrigger(); // 旋转编码器触发
+    controller.latchGearTrigger(); // 开始旋转
+  }
+
+  if (msg === "STOP") {
+    controller.releaseGearTrigger(); // 旋转停止（可选）
   }
 }
+
 //硬件提示（旋转编码器）
 //接线：
 //CLK → D2
 //DT → D3
 //VCC → 5V
 //GND → GND
+
