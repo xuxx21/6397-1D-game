@@ -135,6 +135,24 @@ class Display {
     pop();
   }
 
+  // === 新增：在色轮环上画一个“灰色方块”游标，显示离散位置 ===
+  drawRingCursor(cx, cy, hueDeg, col = color(190), w = 12, h = 8) {
+    const a = -HALF_PI + radians(hueDeg); // 以 12 点为 0°
+    // 取内外半径的中间，视觉上刚好“贴着环”
+    const r = (this.wheelRadiusOuter + this.wheelRadiusInner) * 0.5;
+    const x = cx + cos(a) * r;
+    const y = cy + sin(a) * r;
+
+    push();
+    noStroke();
+    fill(col);
+    rectMode(CENTER);
+    translate(x, y);
+    rotate(a + HALF_PI); // 方块沿切向摆放
+    rect(0, 0, w, h, 2);
+    pop();
+  }
+
   drawHUD(round, p1Score, p2Score, timeLeftMs = null) {
     push();
     noStroke();
@@ -205,6 +223,10 @@ class Display {
     // 玩家标记 + 弧线
     this.drawMarkerAtHue(cx, cy, p1Hue, color(255, 0, 0), "P1");
     this.drawMarkerAtHue(cx, cy, p2Hue, color(0, 120, 255), "P2");
+
+    // 在环上同步显示玩家“方块游标”
+    this.drawRingCursor(cx, cy, p1Hue, color(190));
+    this.drawRingCursor(cx, cy, p2Hue, color(150));
 
     stroke(255, 80);
     drawArcTo(p1Hue, targetHue, color(255, 80, 80));
@@ -293,6 +315,10 @@ class Display {
         this.drawMarkerAtHue(cx, cy, p1Hue, color(255, 0, 0), "P1");
         this.drawMarkerAtHue(cx, cy, p2Hue, color(0, 120, 255), "P2");
 
+        // 在环上显示玩家当前位置的灰色方块游标
+        this.drawRingCursor(cx, cy, p1Hue, color(190)); // P1
+        this.drawRingCursor(cx, cy, p2Hue, color(150)); // P2（稍深便于区分）
+
         // 倒计时（GUESS 阶段）
         const msLeft = controller.timeLeft ? controller.timeLeft() : null;
         this.drawHUD(controller.round, p1Score, p2Score, msLeft);
@@ -308,6 +334,11 @@ class Display {
         const targetHue = controller.targetHue || 0;
 
         this.drawRevealOverlay(cx, cy, targetHue, p1Hue, p2Hue);
+
+        // 同步显示玩家“方块游标”
+        this.drawRingCursor(cx, cy, p1Hue, color(190));
+        this.drawRingCursor(cx, cy, p2Hue, color(150));
+
         this.drawHUD(controller.round, p1Score, p2Score, null);
 
         // === 新增：REVEAL 停留时间提示（环形倒计时 + 文本） ===
@@ -353,4 +384,4 @@ class Display {
       }
     }
   }
-} 
+}
