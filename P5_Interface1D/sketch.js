@@ -9,7 +9,7 @@
 
 // ====== Game Canvas / Display ======
 let displaySize = 30;   // number of columns (1D "pixels")
-let pixelSize   = 30;   // visual size of each pixel
+let pixelSize   = 30;   // visual size of each pixel（仅作内部比例使用，不再决定画布高度）
 
 // ====== Core Objects ======
 let playerOne;          // Red player
@@ -35,7 +35,9 @@ let gameConfig = {
 };
 
 function setup() {
-  createCanvas(displaySize * pixelSize, pixelSize); // 1D interface
+  // ✅ 改为整窗画布（不再用 1D 条带的高度）
+  createCanvas(windowWidth, windowHeight);
+  pixelDensity(1);
 
   // Initialize display
   display = new Display(displaySize, pixelSize);
@@ -53,24 +55,30 @@ function setup() {
 
   // Controller (state machine lives here; will consume `gameConfig`)
   controller = new Controller();
-  controller.gameConfig = gameConfig; // expose config to controller
+
+  // ✅ Display.show() 里读取的是 controller.cfg，所以这里对齐字段名
+  controller.cfg = gameConfig;
 
   // Score tracking (winner color used for screen wash)
   score = { max: gameConfig.maxRounds, winner: color(0, 0, 0) };
-
-  // Optional: consistent frame rate for smoother UI
-  // frameRate(60);
 }
 
 function draw() {
-  // Clear background
-  background(0);
-
-  // Update state machine (IDLE → MIX → GUESS → REVEAL → SCORE → NEXT_ROUND)
+  // 不再在这里清屏；Display.show() 内部已调用 background(0)
   controller.update();
-
-  // Render current frame (Display is the only place that writes to screen)
   display.show();
+}
+
+// ✅ 窗口大小变化时，自适应画布与显示参数
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+
+  // 让显示半径随画布更新（Display 里用到）
+  if (display) {
+    display.wheelRadiusOuter = Math.max(80, Math.min(width, height) * 0.45);
+    display.wheelRadiusInner = display.wheelRadiusOuter * 0.65;
+    display.markerRadius     = display.wheelRadiusOuter + 18;
+  }
 }
 
 
