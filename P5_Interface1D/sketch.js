@@ -27,7 +27,7 @@ let gameConfig = {
   // wheel difficulty: more segments each round
   segmentsByRound: [12, 16, 24, 32, 48, 72],
   // guessing time per round (ms)
-  guessTimeMsByRound: [6000, 5500, 5000, 4500, 4000, 3500],
+  guessTimeMsByRound: [10000, 9500, 9000, 8500, 8000, 7500],
   // scoring
   S_MAX: 100,          // max points for exact match
   // MIX / SPIN (triggered by physical gear or 'R' key) uses a fixed-time animation
