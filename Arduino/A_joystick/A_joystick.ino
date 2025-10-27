@@ -1,12 +1,13 @@
-#include <Keyboard.h> // include the keyboard library, which outputs native key commands on the Arduino
+#include <Keyboard.h> // 用于摇杆 → 键盘
+// 注意：旋转触发不走 Keyboard，而是走 Serial
 
 const int joyX = A0;   // Joystick X-axis pin
 const int joyY = A1;   // Joystick Y-axis pin
-const int joyBtn = 2;  // Joystick button pin
+const int joyBtn = 2;  // Joystick button pin (可当旋转触发按钮/替代旋转编码器)
 
-const int threshold = 300;  // Deadzone threshold around center (adjust as needed)
-int centerX = 512;          // Default center value for X (approx)
-int centerY = 512;          // Default center value for Y (approx)
+const int threshold = 300;  // Deadzone threshold around center (可调)
+int centerX = 512;          
+int centerY = 512;          
 
 bool keyA = false;
 bool keyD = false;
@@ -15,8 +16,9 @@ bool keyL = false;
 bool btnPressed = false;
 
 void setup() {
-  pinMode(joyBtn, INPUT_PULLUP);  // Joystick button usually active LOW
+  pinMode(joyBtn, INPUT_PULLUP);  
   Keyboard.begin();
+  Serial.begin(9600);   // 串口输出给 p5.js
 }
 
 void loop() {
@@ -61,6 +63,7 @@ void loop() {
       keyJ = false;
     }
   }
+
   if (yValue > centerY + threshold) {
     if (!keyL) {
       Keyboard.press('l');
@@ -73,13 +76,15 @@ void loop() {
     }
   }
 
-  // ----- BUTTON PRESS -----
+  // ----- BUTTON / ROTARY ENCODER TRIGGER -----
   if (buttonState == LOW && !btnPressed) {
-    Keyboard.write('r');
+    Serial.println("G");   // 串口发信号 → onSerialData() 捕捉
     btnPressed = true;
   } else if (buttonState == HIGH) {
     btnPressed = false;
   }
 
-  delay(50);  // Small debounce delay
+  delay(50);  // debounce
 }
+
+
