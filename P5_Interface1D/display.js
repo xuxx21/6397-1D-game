@@ -17,11 +17,11 @@ class Display {
     // 视觉参数
     this.wheelRadiusOuter = Math.max(80, Math.min(width, height) * 0.45);
     this.wheelRadiusInner = this.wheelRadiusOuter * 0.65; // 做一个环
-    this.markerRadius     = this.wheelRadiusOuter + 18;   // 指针标记所在半径
+    this.markerRadius     = this.wheelRadiusOuter + 18;   // 未使用但保留
     this.topWindowArcDeg  = 360 / Math.max(12, this.displaySize); // 顶端窗口宽度（可随难度细分）
     this.hudMargin        = 18;
 
-    // 可选：REVEAL 动画帧推进（若控制器未来加入 reveal 动画停留，可用）
+    // 可选：REVEAL 动画帧推进
     this.revealAnimT = 0; // 0..1
   }
 
@@ -37,10 +37,10 @@ class Display {
   // ===== 工具：映射/颜色/绘制辅助 =====
   posToHue(pos) { return (pos % this.displaySize) * (360 / this.displaySize); } // 与 controller 一致
 
-  hueToCol(h, s = 100, b = 100) {
+  hueToCol(h, s = 100, b = 100, a = 255) {
     push();
-    colorMode(HSB, 360, 100, 100);
-    const c = color((h % 360 + 360) % 360, s, b);
+    colorMode(HSB, 360, 100, 100, 255);
+    const c = color((h % 360 + 360) % 360, s, b, a);
     pop();
     return c;
   }
@@ -72,8 +72,7 @@ class Display {
       const a0 = -HALF_PI + i * TWO_PI / segments;
       const a1 = -HALF_PI + (i + 1) * TWO_PI / segments;
       const hue = (i * 360 / segments + 360) % 360;
-      const col = this.hueToCol(hue, saturation, brightness);
-      col.setAlpha(alpha);
+      const col = this.hueToCol(hue, saturation, brightness, alpha);
       this.drawRingSegment(0, 0, this.wheelRadiusOuter, this.wheelRadiusInner, a0, a1, col);
     }
     pop();
@@ -91,11 +90,10 @@ class Display {
 
     push();
     translate(cx, cy);
-    // 窗口不随整体旋转（始终固定在 12 点）
     noStroke();
     this.drawRingSegment(0, 0, this.wheelRadiusOuter, this.wheelRadiusInner, a0, a1, col);
 
-    // 细节：在窗口上加一个细边
+    // 细边
     noFill();
     stroke(255, 180);
     strokeWeight(1);
@@ -104,171 +102,71 @@ class Display {
     pop();
   }
 
-  drawMarkerAtHue(cx, cy, hueDeg, col, label = "") {
-    // 把色相映射到角度：以 12 点为 0°
-    const a = -HALF_PI + radians(hueDeg);
-    const x = cx + cos(a) * this.markerRadius;
-    const y = cy + sin(a) * this.markerRadius;
+  // === 计算 hue 所在分格的扇形角度（以 12 点为 0°）===
+  hueToSegmentAngles(hueDeg, segments) {
+    const segAngle = TWO_PI / segments;
+    const idx = floor(((hueDeg % 360) + 360) % 360 / (360 / segments));
+    const a0 = -HALF_PI + idx * segAngle;
+    const a1 = a0 + segAngle;
+    return { a0, a1, idx };
+  }
 
-    // 标记形状
-    push();
-    noStroke();
-    fill(col);
-    // 红玩家：三角；蓝玩家：圆（与之前叙述一致）
-    if (label === "P1") {
-      push();
-      translate(x, y);
-      rotate(a + HALF_PI);
-      triangle(-6, 10, 6, 10, 0, -8);
-      pop();
-    } else if (label === "P2") {
-      circle(x, y, 12);
-    } else {
-      rectMode(CENTER);
-      rect(x, y, 10, 10, 2);
+  // === 玩家“实心选中框”扇形（与分格对齐）===
+  drawPlayerSector(cx, cy, hueDeg, segments, fillCol, outlineCol = null) {
+    const { a0, a1 } = this.hueToSegmentAngles(hueDeg, segments);
+    // 实心
+    this.drawRingSegment(cx, cy, this.wheelRadiusOuter, this.wheelRadiusInner, a0, a1, fillCol);
+    // 轮廓（可选）
+    if (outlineCol) {
+      noFill();
+      stroke(outlineCol);
+      strokeWeight(2);
+      arc(cx, cy, this.wheelRadiusOuter * 2, this.wheelRadiusOuter * 2, a0, a1);
+      arc(cx, cy, this.wheelRadiusInner * 2, this.wheelRadiusInner * 2, a0, a1);
     }
-    // 标签
-    fill(255);
-    textSize(12);
-    textAlign(CENTER, BOTTOM);
-    text(label, x, y - 14);
-    pop();
   }
 
-  // === 新增：在色轮环上画一个“灰色方块”游标，显示离散位置 ===
-  drawRingCursor(cx, cy, hueDeg, col = color(190), w = 12, h = 8) {
-    const a = -HALF_PI + radians(hueDeg); // 以 12 点为 0°
-    // 取内外半径的中间，视觉上刚好“贴着环”
-    const r = (this.wheelRadiusOuter + this.wheelRadiusInner) * 0.5;
-    const x = cx + cos(a) * r;
-    const y = cy + sin(a) * r;
-
-    push();
-    noStroke();
-    fill(col);
-    rectMode(CENTER);
-    translate(x, y);
-    rotate(a + HALF_PI); // 方块沿切向摆放
-    rect(0, 0, w, h, 2);
-    pop();
+  // === 目标扇形（REVEAL 阶段高亮）===
+  drawTargetSector(cx, cy, hueDeg, segments) {
+    const { a0, a1 } = this.hueToSegmentAngles(hueDeg, segments);
+    const c = this.hueToCol(hueDeg, 100, 100, 220);
+    this.drawRingSegment(cx, cy, this.wheelRadiusOuter, this.wheelRadiusInner, a0, a1, c);
+    noFill();
+    stroke(255);
+    strokeWeight(2);
+    arc(cx, cy, this.wheelRadiusOuter * 2, this.wheelRadiusOuter * 2, a0, a1);
+    arc(cx, cy, this.wheelRadiusInner * 2, this.wheelRadiusInner * 2, a0, a1);
   }
 
-  drawHUD(round, p1Score, p2Score, timeLeftMs = null) {
+  // === HUD：仅显示回合与倒计时 ===
+  drawHUD(round, timeLeftMs = null) {
     push();
     noStroke();
     fill(255);
     textSize(14);
     textAlign(LEFT, TOP);
-    const tl = timeLeftMs != null ? ` | Time: ${(timeLeftMs/1000).toFixed(1)}s` : "";
-    text(`Round ${round} | P1: ${p1Score}  P2: ${p2Score}${tl}`, this.hudMargin, this.hudMargin);
+    const tl = timeLeftMs != null ? `  |  ${ (timeLeftMs/1000).toFixed(1) }s` : "";
+    text(`Round ${round}${tl}`, this.hudMargin, this.hudMargin);
     pop();
-  }
-
-  // ===== 新增：环形倒计时（用于 REVEAL 停留） =====
-  drawRevealTimer(cx, cy, totalMs, endMs) {
-    if (!totalMs || !endMs) return;
-    const now = millis();
-    const remain = Math.max(0, endMs - now);
-    const t = constrain(1.0 - (remain / totalMs), 0, 1); // 0→1 代表进度
-
-    // 外圈进度环
-    const outerR = this.wheelRadiusOuter + 30;
-    const thickness = 8;
-
-    // 背景环
-    noFill();
-    stroke(255, 40);
-    strokeWeight(thickness);
-    arc(cx, cy, outerR * 2, outerR * 2, -HALF_PI, -HALF_PI + TWO_PI);
-
-    // 进度环（顺时针）
-    stroke(255);
-    strokeWeight(thickness);
-    arc(cx, cy, outerR * 2, outerR * 2, -HALF_PI, -HALF_PI + t * TWO_PI);
-
-    // 文本
-    noStroke();
-    fill(255);
-    textAlign(CENTER, CENTER);
-    textSize(16);
-    text(`${(remain/1000).toFixed(1)}s`, cx, cy - outerR - 14);
-    textSize(12);
-    text(`Revealing…`, cx, cy - outerR - 30);
-  }
-
-  drawRevealOverlay(cx, cy, targetHue, p1Hue, p2Hue) {
-    // 目标 & 两名玩家到目标的弧线
-    const drawArcTo = (fromHue, toHue, col) => {
-      const a0 = -HALF_PI + radians(fromHue);
-      const a1 = -HALF_PI + radians(toHue);
-      const dir = this.shortestArcDirection(a0, a1);
-      noFill();
-      stroke(col);
-      strokeWeight(2);
-      const steps = 60;
-      beginShape();
-      for (let i = 0; i <= steps; i++) {
-        const t = i / steps;
-        const a = a0 + dir * t * this.shortestArcAngle(a0, a1);
-        const r = lerp(this.wheelRadiusOuter + 4, this.wheelRadiusOuter + 24, t);
-        vertex(cx + cos(a) * r, cy + sin(a) * r);
-      }
-      endShape();
-    };
-
-    // 目标标记
-    const targetCol = this.hueToCol(targetHue);
-    this.drawMarkerAtHue(cx, cy, targetHue, targetCol, "Target");
-
-    // 玩家标记 + 弧线
-    this.drawMarkerAtHue(cx, cy, p1Hue, color(255, 0, 0), "P1");
-    this.drawMarkerAtHue(cx, cy, p2Hue, color(0, 120, 255), "P2");
-
-    // 在环上同步显示玩家“方块游标”
-    this.drawRingCursor(cx, cy, p1Hue, color(190));
-    this.drawRingCursor(cx, cy, p2Hue, color(150));
-
-    stroke(255, 80);
-    drawArcTo(p1Hue, targetHue, color(255, 80, 80));
-    drawArcTo(p2Hue, targetHue, color(80, 160, 255));
-  }
-
-  shortestArcAngle(a0, a1) {
-    // 返回 a0->a1 的最短弧长（弧度，正）
-    let d = (a1 - a0) % (TWO_PI);
-    if (d < 0) d += TWO_PI;
-    return d <= PI ? d : TWO_PI - d;
-  }
-
-  shortestArcDirection(a0, a1) {
-    // 返回方向：+1 顺时针，-1 逆时针（从 a0 到 a1 的较短方向）
-    let d = (a1 - a0) % (TWO_PI);
-    if (d < 0) d += TWO_PI;
-    return d <= PI ? +1 : -1;
   }
 
   // ===== 主渲染入口：根据 controller.gameState 绘制 =====
   show() {
-    // 背景
     background(0);
 
     const cx = width / 2;
     const cy = height / 2;
 
-    // 安全获取当前段数
+    // 获取当前分段数
     const cfg = controller && controller.cfg ? controller.cfg : null;
     const roundIdx = Math.max(0, Math.min((controller?.round || 1) - 1, (cfg?.segmentsByRound?.length || 1) - 1));
     const segments = cfg ? cfg.segmentsByRound[roundIdx] : this.displaySize;
-
-    // 统一 HUD 分数
-    const p1Score = playerOne?.score || 0;
-    const p2Score = playerTwo?.score || 0;
 
     switch (controller?.gameState) {
       case "IDLE": {
         // 淡色盘（低饱和/亮度） + 提示
         this.drawWheelFull(cx, cy, segments, 0, 60, 30, 60);
-        this.drawHUD(controller.round, p1Score, p2Score, null);
+        this.drawHUD(controller.round, null);
 
         push();
         fill(255);
@@ -280,25 +178,32 @@ class Display {
       }
 
       case "MIX": {
-        // 旋转动画（固定时长缓停），只显示顶端窗口
+        // 旋转动画，只有顶端窗口可见（根据 rotationDeg 着色）
         const t = constrain((millis() - controller.mixStartMs) / controller.mixDurationMs, 0, 1);
         const e = this.easeOutCubic(t);
 
-        // 以 targetHue 作为最终视觉对齐，让顶端窗口的色与目标一致
         const a0 = 0;
         const a1 = (controller.targetHue || 0);
         const rotationDeg = lerp(a0, a1, e);
 
-        // 淡淡轮廓 + 顶端窗口
-        this.drawWheelFull(cx, cy, segments, rotationDeg, 60, 12, 35);
-        this.drawTopWindow(cx, cy, rotationDeg, this.topWindowArcDeg);
+        // 灰轮廓 + 顶端窗口
+        push();
+        noFill();
+        stroke(80);
+        strokeWeight(12);
+        ellipse(cx, cy, this.wheelRadiusOuter * 2, this.wheelRadiusOuter * 2);
+        strokeWeight(12);
+        stroke(40);
+        ellipse(cx, cy, this.wheelRadiusInner * 2, this.wheelRadiusInner * 2);
+        pop();
 
-        this.drawHUD(controller.round, p1Score, p2Score, null);
+        this.drawTopWindow(cx, cy, rotationDeg, this.topWindowArcDeg);
+        this.drawHUD(controller.round, null);
         break;
       }
 
       case "GUESS": {
-        // 灰色轮廓，隐藏真实颜色
+        // 隐藏完整色盘，仅保留灰色外/内圈 + 顶端窗口（固定显示）
         push();
         noFill();
         stroke(120);
@@ -309,43 +214,38 @@ class Display {
         ellipse(cx, cy, this.wheelRadiusInner * 2, this.wheelRadiusInner * 2);
         pop();
 
-        // 玩家指针
+        // 顶端窗口始终在 12 点（颜色对应目标 hue）
+        const topDeg = controller.targetHue || 0;
+        this.drawTopWindow(cx, cy, topDeg, this.topWindowArcDeg);
+
+        // 玩家“扇形选中框”（与分格对齐）
         const p1Hue = this.posToHue(playerOne.position);
         const p2Hue = this.posToHue(playerTwo.position);
-        this.drawMarkerAtHue(cx, cy, p1Hue, color(255, 0, 0), "P1");
-        this.drawMarkerAtHue(cx, cy, p2Hue, color(0, 120, 255), "P2");
 
-        // 在环上显示玩家当前位置的灰色方块游标
-        this.drawRingCursor(cx, cy, p1Hue, color(190)); // P1
-        this.drawRingCursor(cx, cy, p2Hue, color(150)); // P2（稍深便于区分）
+        // 半透明填充 + 细白边，红/蓝分别取自身色调
+        this.drawPlayerSector(cx, cy, p1Hue, segments, color(255, 0, 0, 160), color(255));
+        this.drawPlayerSector(cx, cy, p2Hue, segments, color(0, 120, 255, 160), color(255));
 
         // 倒计时（GUESS 阶段）
         const msLeft = controller.timeLeft ? controller.timeLeft() : null;
-        this.drawHUD(controller.round, p1Score, p2Score, msLeft);
+        this.drawHUD(controller.round, msLeft);
         break;
       }
 
       case "REVEAL": {
-        // 完整色轮 + 目标 & 两位玩家 + 弧线距离
+        // 完整色轮 + 目标扇形 + 玩家扇形
         this.drawWheelFull(cx, cy, segments, 0, 100, 100, 255);
 
         const p1Hue = this.posToHue(playerOne.position);
         const p2Hue = this.posToHue(playerTwo.position);
         const targetHue = controller.targetHue || 0;
 
-        this.drawRevealOverlay(cx, cy, targetHue, p1Hue, p2Hue);
+        // 高亮目标与玩家位置
+        this.drawTargetSector(cx, cy, targetHue, segments);
+        this.drawPlayerSector(cx, cy, p1Hue, segments, color(255, 0, 0, 180));
+        this.drawPlayerSector(cx, cy, p2Hue, segments, color(0, 120, 255, 180));
 
-        // 同步显示玩家“方块游标”
-        this.drawRingCursor(cx, cy, p1Hue, color(190));
-        this.drawRingCursor(cx, cy, p2Hue, color(150));
-
-        this.drawHUD(controller.round, p1Score, p2Score, null);
-
-        // === 新增：REVEAL 停留时间提示（环形倒计时 + 文本） ===
-        const total = controller?.revealDurationMs || 0;
-        const endMs = controller?.revealEndMs || 0;
-        this.drawRevealTimer(cx, cy, total, endMs);
-
+        this.drawHUD(controller.round, null);
         break;
       }
 
@@ -363,7 +263,7 @@ class Display {
         rect(0, 0, width, height);
         pop();
 
-        this.drawHUD(controller.round, p1Score, p2Score, null);
+        this.drawHUD(controller.round, null);
 
         push();
         fill(255);
