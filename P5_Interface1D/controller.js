@@ -16,7 +16,6 @@ class Controller {
     // target per round (hue in degrees 0..360)
     this.targetHue = 0;
     // 这一轮色轮的“配色偏移角度”（用来控制 REVEAL 阶段色轮的整体颜色排列）
-    // 目标：REVEAL 时，色轮 12 点方向那一块颜色 = 顶端窗口显示的颜色（targetHue）
     this.wheelHueOffset = 0;
     // hardware trigger latch
     this._gearTriggerLatched = false;
@@ -26,13 +25,16 @@ class Controller {
     this.lastP1Gain = 0;
     this.lastP2Gain = 0;
   }
+
   // ---- hardware / keyboard triggers ----
   latchGearTrigger() {
     this._gearTriggerLatched = true;
   }
+
   releaseGearTrigger() {
-    // optional: currently no-op; keep for future "STOP" handling if needed
+    // optional: currently no-op
   }
+
   gearTriggeredOnce() {
     if (this._gearTriggerLatched) {
       this._gearTriggerLatched = false;
@@ -40,12 +42,10 @@ class Controller {
     }
     return false;
   }
+
   // ---- round helpers ----
   startMix() {
-    // 随机选一个目标色（0..360）
     this.targetHue = random(0, 360);
-    // 这一轮的色轮配色偏移 = 目标色
-    // => REVEAL 阶段画色轮时，用这个 offset，让 12 点方向那一块 = targetHue
     this.wheelHueOffset = this.targetHue;
     this.mixStartMs = millis();
     this.mixDurationMs = this.cfg.spinDurationMs;
@@ -53,36 +53,37 @@ class Controller {
       Math.min(this.round - 1, this.cfg.guessTimeMsByRound.length - 1)
     ];
     this.guessEndMs = millis() + t;
-    // reset reveal timing & round gains
     this.revealEndMs = null;
     this.lastP1Gain = 0;
     this.lastP2Gain = 0;
-    // optional animation hook
+
     if (typeof collisionAnimation?.startMix === "function") {
       collisionAnimation.startMix(this.targetHue, this.mixDurationMs);
     }
     this.gameState = "MIX";
   }
-  // remaining ms for GUESS (for HUD)
+
   timeLeft() {
     return Math.max(0, this.guessEndMs - millis());
   }
+
   // ---- scoring math ----
-  // player.position -> hue（0..360）
   playerPosToHue(player) {
     const size = player.displaySize || display.displaySize || 360;
     return (player.position % size) * (360 / size);
   }
+
   hueCircularDistance(h1, h2) {
     const d = Math.abs(h1 - h2) % 360;
     return Math.min(d, 360 - d);
   }
-  // 由角度差映射到分数：dist=0 => S_MAX; dist=180 => 0
+
   inverseScore(distDeg) {
     const sMax = this.cfg.S_MAX;
     return Math.round(Math.max(0, sMax * (1 - distDeg / 180)));
   }
-  // ---- 连续键盘移动（已修复卡顿！事件驱动，不查 keyIsDown）----
+
+  // ---- 连续移动：用 sketch.js 的 p1Left 等变量驱动！----
   updatePlayersFromKeyboardContinuous() {
     if (this.gameState !== "GUESS") return;
     const speedDeg = this.keyboardSpeedDegPerSec;
@@ -91,23 +92,19 @@ class Controller {
     let deltaDegP1 = 0;
     let deltaDegP2 = 0;
 
-    // 用状态变量（p1Left 等）驱动，不再每帧查 keyIsDown！
     if (p1Left)  deltaDegP1 -= speedDeg * dt;
     if (p1Right) deltaDegP1 += speedDeg * dt;
     if (p2Left)  deltaDegP2 -= speedDeg * dt;
     if (p2Right) deltaDegP2 += speedDeg * dt;
 
     if (playerOne) {
-      playerOne.position =
-        (playerOne.position + deltaDegP1 * stepPerDeg + display.displaySize) %
-        display.displaySize;
+      playerOne.position = (playerOne.position + deltaDegP1 * stepPerDeg + display.displaySize) % display.displaySize;
     }
     if (playerTwo) {
-      playerTwo.position =
-        (playerTwo.position + deltaDegP2 * stepPerDeg + display.displaySize) %
-        display.displaySize;
+      playerTwo.position = (playerTwo.position + deltaDegP2 * stepPerDeg + display.displaySize) % display.displaySize;
     }
   }
+
   // ---- main update ----
   update() {
     switch (this.gameState) {
@@ -126,14 +123,12 @@ class Controller {
         break;
       }
       case "GUESS": {
-        // 每一帧根据键盘连续更新玩家位置
         this.updatePlayersFromKeyboardContinuous();
         display.clear();
         if (millis() >= this.guessEndMs) {
           this.gameState = "REVEAL";
-          // set REVEAL hold window
           this.revealEndMs = millis() + this.revealDurationMs;
-          // ===== 这里真正进行记分 =====
+
           const p1Hue = this.playerPosToHue(playerOne);
           const p2Hue = this.playerPosToHue(playerTwo);
           const d1 = this.hueCircularDistance(p1Hue, this.targetHue);
@@ -144,7 +139,7 @@ class Controller {
           this.lastP2Gain = gain2;
           playerOne.score += gain1;
           playerTwo.score += gain2;
-          // optional animation hook
+
           if (typeof collisionAnimation?.startReveal === "function") {
             collisionAnimation.startReveal(
               { targetHue: this.targetHue, p1Hue, p2Hue, gain1, gain2 },
@@ -161,25 +156,19 @@ class Controller {
         break;
       }
       case "SCORE": {
-        // game end?
         if (this.round >= this.cfg.maxRounds) {
           score.winner = (playerOne.score >= playerTwo.score)
             ? playerOne.playerColor
             : playerTwo.playerColor;
-          // fill screen with winner color using buffer API
           display.setAllPixels(score.winner);
           if (typeof collisionAnimation?.startWinnerFlash === "function") {
             collisionAnimation.startWinnerFlash(score.winner, 1000);
           }
-          // reset for a new session
           this.gameState = "IDLE";
           this.round = 1;
-          if (typeof playerOne.resetAll === "function") playerOne.resetAll();
-          else { playerOne.score = 0; }
-          if (typeof playerTwo.resetAll === "function") playerTwo.resetAll();
-          else { playerTwo.score = 0; }
+          playerOne.score = 0;
+          playerTwo.score = 0;
         } else {
-          // next round
           this.round++;
           this.gameState = "IDLE";
         }
@@ -191,35 +180,13 @@ class Controller {
   }
 }
 
-// ===================================
-// 全局键盘状态变量（Lisa 专属防卡顿神器！）
-let p1Left = false, p1Right = false;
-let p2Left = false, p2Right = false;
-
-// ===================================
-// 事件驱动键盘处理（不再轮询，丝滑！）
-function keyPressed() {
-  if (key === 'a' || key === 'A') p1Left = true;
-  if (key === 'd' || key === 'D') p1Right = true;
-  if (key === 'j' || key === 'J') p2Left = true;
-  if (key === 'l' || key === 'L') p2Right = true;
-  if (key === 'r' || key === 'R') controller.latchGearTrigger();
-}
-
-function keyReleased() {
-  if (key === 'a' || key === 'A') p1Left = false;
-  if (key === 'd' || key === 'D') p1Right = false;
-  if (key === 'j' || key === 'J') p2Left = false;
-  if (key === 'l' || key === 'L') p2Right = false;
-}
-
 // ---------- Serial input hook ----------
 function onSerialData(data) {
   let msg = data.trim();
   if (msg === "G") {
-    controller.latchGearTrigger(); // start spin trigger
+    controller.latchGearTrigger();
   }
   if (msg === "STOP") {
-    controller.releaseGearTrigger(); // optional; currently no-op
+    controller.releaseGearTrigger();
   }
 }
