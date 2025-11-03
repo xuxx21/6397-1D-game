@@ -57,15 +57,15 @@ class Display {
     endShape(CLOSE);
   }
 
-  // 画完整色轮（中心在 cx,cy，可额外旋转）
-  drawWheelFull(cx, cy, segments, rotationDeg = 0, saturation = 100, brightness = 100, alpha = 255) {
+  // 画完整色轮：hueOffsetDeg 控制“12 点方向那一格”的颜色
+  drawWheelFull(cx, cy, segments, hueOffsetDeg = 0, saturation = 100, brightness = 100, alpha = 255) {
     push();
     translate(cx, cy);
-    rotate(radians(rotationDeg));
+    // 不再几何 rotate，而是用 hueOffsetDeg 旋转色相
     for (let i = 0; i < segments; i++) {
       const a0 = -HALF_PI + i * TWO_PI / segments;
       const a1 = -HALF_PI + (i + 1) * TWO_PI / segments;
-      const hue = (i * 360 / segments + 360) % 360;
+      const hue = (hueOffsetDeg + i * (360 / segments)) % 360; // i=0 那一格色相 = hueOffsetDeg
       const col = this.hueToCol(hue, saturation, brightness, alpha);
       this.drawRingSegment(0, 0, this.wheelRadiusOuter, this.wheelRadiusInner, a0, a1, col);
     }
@@ -115,7 +115,7 @@ class Display {
     }
   }
 
-  // —— 局部坐标版（REVEAL 里，在 push+translate+rotate 内用）——
+  // —— 局部坐标版（REVEAL 里，在 push+translate 内用）——
   drawPlayerSectorByPosLocal(pos, segments, fillCol, outlineCol = null) {
     const { a0, a1 } = this.posToSegmentAngles(pos, segments);
     this.drawRingSegment(0, 0, this.wheelRadiusOuter, this.wheelRadiusInner, a0, a1, fillCol);
@@ -128,7 +128,7 @@ class Display {
     }
   }
 
-  // 目标扇形（全局坐标，GUESS/其他不太用）
+  // 目标扇形（全局坐标，暂主要用于 GUESS 以外情况）
   drawTargetSector(cx, cy, targetHue, segments) {
     const step = 360 / segments;
     const idx  = floor(((targetHue % 360) + 360) % 360 / step);
@@ -160,9 +160,9 @@ class Display {
     // 目标加更明显的粗轮廓
     noFill();
     stroke(255);
-    strokeWeight(3);
-    arc(0, 0, this.wheelRadiusOuter * 2 + 2, this.wheelRadiusOuter * 2 + 2, a0, a1);
-    arc(0, 0, this.wheelRadiusInner * 2 - 2, this.wheelRadiusInner * 2 - 2, a0, a1);
+    strokeWeight(3.5);
+    arc(0, 0, this.wheelRadiusOuter * 2 + 4, this.wheelRadiusOuter * 2 + 4, a0, a1);
+    arc(0, 0, this.wheelRadiusInner * 2 - 4, this.wheelRadiusInner * 2 - 4, a0, a1);
   }
 
   // HUD：总分 + 回合 + （可选）倒计时
@@ -245,7 +245,7 @@ class Display {
 
     switch (controller?.gameState) {
       case "IDLE": {
-        // 原始位置的色轮（下一局开始前会回到这里）
+        // 原始位置的色轮（下一局开始前会回到这里，hueOffset=0）
         this.drawWheelFull(cx, cy, segments, 0, 100, 100, 220);
         this.drawHUD(controller.round, p1Score, p2Score, null);
         push();
@@ -264,7 +264,7 @@ class Display {
         const a1 = (controller.targetHue || 0);
         const rotationDeg = lerp(a0, a1, e);
 
-        // 灰轮廓 + 顶端窗口（宽度 = 一格）
+        // 灰轮廓 + 顶端窗口（宽度 = 一格），窗口颜色根据 rotationDeg 变化
         push();
         noFill();
         stroke(80);
@@ -281,7 +281,7 @@ class Display {
       }
 
       case "GUESS": {
-        // 灰轮廓 + 顶端窗口（显示目标 hue 所在那一格）
+        // 灰轮廓 + 顶端窗口（显示“你现在看到的这块颜色”，即 targetHue）
         push();
         noFill();
         stroke(120);
@@ -308,18 +308,16 @@ class Display {
 
       case "REVEAL": {
         const targetHue = controller.targetHue || 0;
-        // 每一局 reveal 时使用 controller.revealRotationDeg，让玩家看到“转过后的色轮”
-        const rotDeg = controller?.revealRotationDeg || 0;
 
-        // 在局部坐标系里统一旋转：色轮 + 目标扇形 + 玩家扇形 + 差距线
+        // 展开“spin 后的色轮”：让 12 点那一格的颜色 = targetHue
+        // 这样玩家感觉就是：刚才盖子掀开，看到了完整色盘的位置
         push();
         translate(cx, cy);
-        rotate(radians(rotDeg));
 
-        // 色轮整体稍微透明一点，让玩家扇形更显眼
-        this.drawWheelFull(0, 0, segments, 0, 80, 80, 160);
+        // 色轮整体透明一点，让玩家扇形更显眼
+        this.drawWheelFull(0, 0, segments, targetHue, 80, 80, 160);
 
-        // 目标位置（更粗的描边）
+        // 目标位置（更粗的描边，显眼）
         this.drawTargetSectorLocal(targetHue, segments);
 
         // 玩家选中框（更饱和更厚）
