@@ -25,6 +25,13 @@ class Controller {
 
     // hardware trigger latch
     this._gearTriggerLatched = false;
+
+    // keyboard move speed (deg/sec)
+    this.keyboardSpeedDegPerSec = this.cfg.keyboardSpeedDegPerSec || 220;
+
+    // 记录每一回合新加的分数，用于在 REVEAL 阶段显示
+    this.lastP1Gain = 0;
+    this.lastP2Gain = 0;
   }
 
   // ---- hardware / keyboard triggers ----
@@ -55,8 +62,10 @@ class Controller {
     ];
     this.guessEndMs = millis() + t;
 
-    // reset reveal timing
+    // reset reveal timing & round gains
     this.revealEndMs = null;
+    this.lastP1Gain = 0;
+    this.lastP2Gain = 0;
 
     // optional animation hook
     if (typeof collisionAnimation?.startMix === "function") {
@@ -72,6 +81,12 @@ class Controller {
   }
 
   // ---- scoring math ----
+  // player.position -> hue（0..360）
+  playerPosToHue(player) {
+    const size = player.displaySize || display.displaySize || 360;
+    return (player.position % size) * (360 / size);
+  }
+
   hueCircularDistance(h1, h2) {
     const d = Math.abs(h1 - h2) % 360;
     return Math.min(d, 360 - d);
@@ -80,6 +95,37 @@ class Controller {
   inverseScore(distDeg) {
     const sMax = this.cfg.S_MAX;
     return Math.round(Math.max(0, sMax * (1 - distDeg / 180)));
+  }
+
+  // ---- 连续键盘移动（解决延时/卡顿的关键） ----
+  updatePlayersFromKeyboardContinuous() {
+    if (this.gameState !== "GUESS") return;
+
+    const speedDeg = this.keyboardSpeedDegPerSec;
+    const stepPerDeg = display.displaySize / 360;
+    const dt = deltaTime / 1000.0;
+
+    let deltaDegP1 = 0;
+    let deltaDegP2 = 0;
+
+    // P1: A / D
+    if (keyIsDown(65)) deltaDegP1 -= speedDeg * dt; // 'A'
+    if (keyIsDown(68)) deltaDegP1 += speedDeg * dt; // 'D'
+
+    // P2: J / L
+    if (keyIsDown(74)) deltaDegP2 -= speedDeg * dt; // 'J'
+    if (keyIsDown(76)) deltaDegP2 += speedDeg * dt; // 'L'
+
+    if (playerOne) {
+      playerOne.position =
+        (playerOne.position + deltaDegP1 * stepPerDeg + display.displaySize) %
+        display.displaySize;
+    }
+    if (playerTwo) {
+      playerTwo.position =
+        (playerTwo.position + deltaDegP2 * stepPerDeg + display.displaySize) %
+        display.displaySize;
+    }
   }
 
   // ---- main update ----
@@ -103,7 +149,9 @@ class Controller {
       }
 
       case "GUESS": {
-        // display.js 会在 GUESS 阶段绘制灰轮廓 + 玩家指针 + 倒计时 HUD
+        // 每一帧根据键盘连续更新玩家位置
+        this.updatePlayersFromKeyboardContinuous();
+
         display.clear();
 
         if (millis() >= this.guessEndMs) {
@@ -111,18 +159,26 @@ class Controller {
           // set REVEAL hold window
           this.revealEndMs = millis() + this.revealDurationMs;
 
-          // compute & apply scores now so HUD can show totals during REVEAL
-          const p1Hue = playerOne.getHue();
-          const p2Hue = playerTwo.getHue();
+          // ===== 这里真正进行记分 =====
+          const p1Hue = this.playerPosToHue(playerOne);
+          const p2Hue = this.playerPosToHue(playerTwo);
+
           const d1 = this.hueCircularDistance(p1Hue, this.targetHue);
           const d2 = this.hueCircularDistance(p2Hue, this.targetHue);
-          playerOne.score += this.inverseScore(d1);
-          playerTwo.score += this.inverseScore(d2);
+
+          const gain1 = this.inverseScore(d1);
+          const gain2 = this.inverseScore(d2);
+
+          this.lastP1Gain = gain1;
+          this.lastP2Gain = gain2;
+
+          playerOne.score += gain1;
+          playerTwo.score += gain2;
 
           // optional animation hook
           if (typeof collisionAnimation?.startReveal === "function") {
             collisionAnimation.startReveal(
-              { targetHue: this.targetHue, p1Hue, p2Hue },
+              { targetHue: this.targetHue, p1Hue, p2Hue, gain1, gain2 },
               this.revealDurationMs
             );
           }
@@ -131,7 +187,6 @@ class Controller {
       }
 
       case "REVEAL": {
-        // display.js 会根据 controller.targetHue / 玩家 hue 绘制完整色轮与弧线 + 环形倒计时
         if (this.revealEndMs != null && millis() >= this.revealEndMs) {
           this.gameState = "SCORE";
         }
@@ -148,7 +203,6 @@ class Controller {
           // fill screen with winner color using buffer API
           display.setAllPixels(score.winner);
 
-          // optional winner flash
           if (typeof collisionAnimation?.startWinnerFlash === "function") {
             collisionAnimation.startWinnerFlash(score.winner, 1000);
           }
@@ -162,7 +216,7 @@ class Controller {
           else { playerTwo.score = 0; }
 
         } else {
-          // next round: wait for next gear trigger
+          // next round
           this.round++;
           this.gameState = "IDLE";
         }
@@ -178,14 +232,7 @@ class Controller {
 
 // ---------- Keyboard fallback ----------
 function keyPressed() {
-  if (controller.gameState === "GUESS") {
-    // 每次移动 1°（需要更灵敏就改成 2 或 3）
-    if (key === 'A' || key === 'a') playerOne.move(-1);
-    if (key === 'D' || key === 'd') playerOne.move(1);
-    if (key === 'J' || key === 'j') playerTwo.move(-1);
-    if (key === 'L' || key === 'l') playerTwo.move(1);
-  }
-
+  // 现在只用键盘 R 来触发回合；玩家移动在 update() 里连续更新
   if (key === 'R' || key === 'r') {
     controller.latchGearTrigger(); // same as encoder "G"
   }
@@ -204,14 +251,7 @@ function onSerialData(data) {
     controller.releaseGearTrigger(); // optional; currently no-op
   }
 
-  // 也可以扩展：解析 "P1:+1" / "P2:-1" 来直接移动玩家指针
+  // 可以在这里解析 P1/P2 的硬件消息
   // if (msg.startsWith("P1:")) { playerOne.move(parseInt(msg.split(":")[1] || "0", 10) || 0); }
   // if (msg.startsWith("P2:")) { playerTwo.move(parseInt(msg.split(":")[1] || "0", 10) || 0); }
 }
-
-// 硬件提示（旋转编码器）
-// 接线：
-// CLK → D2
-// DT  → D3
-// VCC → 5V
-// GND → GND
