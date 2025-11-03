@@ -23,13 +23,17 @@ class Controller {
     // target per round (hue in degrees 0..360)
     this.targetHue = 0;
 
+    // 这一轮色轮的“配色偏移角度”（用来控制 REVEAL 阶段色轮的整体颜色排列）
+    // 目标：REVEAL 时，色轮 12 点方向那一块颜色 = 顶端窗口显示的颜色（targetHue）
+    this.wheelHueOffset = 0;
+
     // hardware trigger latch
     this._gearTriggerLatched = false;
 
-    // keyboard move speed (deg/sec)
+    // keyboard move speed (deg/sec) —— 手感不够快就把这个数调大
     this.keyboardSpeedDegPerSec = this.cfg.keyboardSpeedDegPerSec || 220;
 
-    // 记录每一回合新加的分数，用于在 REVEAL 阶段显示
+    // 记录每一回合新加的分数，用于在 REVEAL 阶段中间显示
     this.lastP1Gain = 0;
     this.lastP2Gain = 0;
   }
@@ -53,7 +57,13 @@ class Controller {
 
   // ---- round helpers ----
   startMix() {
+    // 随机选一个目标色（0..360）
     this.targetHue = random(0, 360);
+
+    // 这一轮的色轮配色偏移 = 目标色
+    // => REVEAL 阶段画色轮时，用这个 offset，让 12 点方向那一块 = targetHue
+    this.wheelHueOffset = this.targetHue;
+
     this.mixStartMs = millis();
     this.mixDurationMs = this.cfg.spinDurationMs;
 
@@ -92,6 +102,7 @@ class Controller {
     return Math.min(d, 360 - d);
   }
 
+  // 由角度差映射到分数：dist=0 => S_MAX; dist=180 => 0
   inverseScore(distDeg) {
     const sMax = this.cfg.S_MAX;
     return Math.round(Math.max(0, sMax * (1 - distDeg / 180)));
