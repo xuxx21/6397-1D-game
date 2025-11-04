@@ -3,24 +3,42 @@ class Controller {
   constructor() {
     this.gameState = "IDLE";
     this.round = 1;
+
     // global config injected from sketch.js
     this.cfg = gameConfig;
+
     // MIX (spin) timing
     this.mixStartMs = 0;
     this.mixDurationMs = this.cfg.spinDurationMs;
+
     // GUESS timing
     this.guessEndMs = 0;
+
     // REVEAL timing
     this.revealDurationMs = 2000; // how long to pause on REVEAL (ms)
     this.revealEndMs = null;
-    // target per round (hue in degrees 0..360)
+
+    // 这一轮顶部窗口显示的色相（旋转后 12 点方向的颜色）
     this.targetHue = 0;
-    // 这一轮色轮的“配色偏移角度”（用来控制 REVEAL 阶段色轮的整体颜色排列）
+
+    // 整个色轮的“配色偏移角度”（REVEAL 阶段用）
     this.wheelHueOffset = 0;
+
+    // ===== 每个玩家要猜的“自己的颜色” =====
+    // 原始色轮上：红/蓝的基准色相（可以在 config 里覆盖）
+    this.redBaseHue  = this.cfg.redBaseHue  ?? 0;   // 例如 0° = 红
+    this.blueBaseHue = this.cfg.blueBaseHue ?? 240; // 例如 240° = 蓝
+
+    // 本轮旋转完之后，红/蓝真实所在的角度位置（0..360，相对 12 点方向）
+    this.redTargetAngleDeg  = 0;
+    this.blueTargetAngleDeg = 0;
+
     // hardware trigger latch
     this._gearTriggerLatched = false;
-    // keyboard move speed (deg/sec) —— 手感不够快就把这个数调大
+
+    // keyboard move speed (deg/sec)
     this.keyboardSpeedDegPerSec = this.cfg.keyboardSpeedDegPerSec || 220;
+
     // 记录每一回合新加的分数，用于在 REVEAL 阶段中间显示
     this.lastP1Gain = 0;
     this.lastP2Gain = 0;
@@ -45,14 +63,26 @@ class Controller {
 
   // ---- round helpers ----
   startMix() {
+    // 随机这轮“旋转后 12 点方向的颜色”
     this.targetHue = random(0, 360);
+
+    // 色轮配色偏移 = 顶部窗口颜色
     this.wheelHueOffset = this.targetHue;
+
+    // 根据这轮旋转，算出“红/蓝真实位置”的角度（0..360）
+    // 推导：色轮上某个角度 angle 对应的颜色 = (targetHue + angle) % 360
+    // 要找颜色 = redBaseHue 时的 angle => angle = redBaseHue - targetHue（mod 360）
+    this.redTargetAngleDeg  = (this.redBaseHue  - this.targetHue + 360) % 360;
+    this.blueTargetAngleDeg = (this.blueBaseHue - this.targetHue + 360) % 360;
+
     this.mixStartMs = millis();
     this.mixDurationMs = this.cfg.spinDurationMs;
+
     const t = this.cfg.guessTimeMsByRound[
       Math.min(this.round - 1, this.cfg.guessTimeMsByRound.length - 1)
     ];
     this.guessEndMs = millis() + t;
+
     this.revealEndMs = null;
     this.lastP1Gain = 0;
     this.lastP2Gain = 0;
@@ -68,13 +98,14 @@ class Controller {
   }
 
   // ---- scoring math ----
-  playerPosToHue(player) {
+  // 把玩家位置映射到“圆周角度 0..360”（相对 12 点方向）
+  playerPosToAngleDeg(player) {
     const size = player.displaySize || display.displaySize || 360;
     return (player.position % size) * (360 / size);
   }
 
-  hueCircularDistance(h1, h2) {
-    const d = Math.abs(h1 - h2) % 360;
+  hueCircularDistance(a1, a2) {
+    const d = Math.abs(a1 - a2) % 360;
     return Math.min(d, 360 - d);
   }
 
@@ -86,9 +117,11 @@ class Controller {
   // ---- 连续移动：用 sketch.js 的 p1Left 等变量驱动！----
   updatePlayersFromKeyboardContinuous() {
     if (this.gameState !== "GUESS") return;
+
     const speedDeg = this.keyboardSpeedDegPerSec;
     const stepPerDeg = display.displaySize / 360;
     const dt = deltaTime / 1000.0;
+
     let deltaDegP1 = 0;
     let deltaDegP2 = 0;
 
@@ -98,16 +131,21 @@ class Controller {
     if (p2Right) deltaDegP2 += speedDeg * dt;
 
     if (playerOne) {
-      playerOne.position = (playerOne.position + deltaDegP1 * stepPerDeg + display.displaySize) % display.displaySize;
+      playerOne.position =
+        (playerOne.position + deltaDegP1 * stepPerDeg + display.displaySize) %
+        display.displaySize;
     }
     if (playerTwo) {
-      playerTwo.position = (playerTwo.position + deltaDegP2 * stepPerDeg + display.displaySize) % display.displaySize;
+      playerTwo.position =
+        (playerTwo.position + deltaDegP2 * stepPerDeg + display.displaySize) %
+        display.displaySize;
     }
   }
 
   // ---- main update ----
   update() {
     switch (this.gameState) {
+
       case "IDLE": {
         display.clear();
         if (this.gearTriggeredOnce()) {
@@ -115,6 +153,7 @@ class Controller {
         }
         break;
       }
+
       case "MIX": {
         display.clear();
         if (millis() - this.mixStartMs >= this.mixDurationMs) {
@@ -122,48 +161,68 @@ class Controller {
         }
         break;
       }
+
       case "GUESS": {
         this.updatePlayersFromKeyboardContinuous();
         display.clear();
+
         if (millis() >= this.guessEndMs) {
           this.gameState = "REVEAL";
           this.revealEndMs = millis() + this.revealDurationMs;
 
-          const p1Hue = this.playerPosToHue(playerOne);
-          const p2Hue = this.playerPosToHue(playerTwo);
-          const d1 = this.hueCircularDistance(p1Hue, this.targetHue);
-          const d2 = this.hueCircularDistance(p2Hue, this.targetHue);
+          // ===== 这里按“各自猜自己的颜色位置”来记分 =====
+          const p1Angle = this.playerPosToAngleDeg(playerOne);
+          const p2Angle = this.playerPosToAngleDeg(playerTwo);
+
+          const d1 = this.hueCircularDistance(p1Angle, this.redTargetAngleDeg);
+          const d2 = this.hueCircularDistance(p2Angle, this.blueTargetAngleDeg);
+
           const gain1 = this.inverseScore(d1);
           const gain2 = this.inverseScore(d2);
+
           this.lastP1Gain = gain1;
           this.lastP2Gain = gain2;
+
           playerOne.score += gain1;
           playerTwo.score += gain2;
 
           if (typeof collisionAnimation?.startReveal === "function") {
             collisionAnimation.startReveal(
-              { targetHue: this.targetHue, p1Hue, p2Hue, gain1, gain2 },
+              {
+                wheelOffsetHue: this.targetHue,
+                redTargetAngle: this.redTargetAngleDeg,
+                blueTargetAngle: this.blueTargetAngleDeg,
+                p1Angle,
+                p2Angle,
+                gain1,
+                gain2
+              },
               this.revealDurationMs
             );
           }
         }
         break;
       }
+
       case "REVEAL": {
         if (this.revealEndMs != null && millis() >= this.revealEndMs) {
           this.gameState = "SCORE";
         }
         break;
       }
+
       case "SCORE": {
         if (this.round >= this.cfg.maxRounds) {
           score.winner = (playerOne.score >= playerTwo.score)
             ? playerOne.playerColor
             : playerTwo.playerColor;
+
           display.setAllPixels(score.winner);
+
           if (typeof collisionAnimation?.startWinnerFlash === "function") {
             collisionAnimation.startWinnerFlash(score.winner, 1000);
           }
+
           this.gameState = "IDLE";
           this.round = 1;
           playerOne.score = 0;
@@ -174,6 +233,7 @@ class Controller {
         }
         break;
       }
+
       default:
         break;
     }
