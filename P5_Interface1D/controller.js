@@ -11,7 +11,7 @@ class Controller {
     // GUESS timing
     this.guessEndMs = 0;
     // REVEAL timing
-    this.revealDurationMs = 2000; // how long to pause on REVEAL (ms)
+    this.revealDurationMs = 10000; // how long to pause on REVEAL (ms)
     this.revealEndMs = null;
     // target per round (hue in degrees 0..360)
     this.targetHue = 0;
