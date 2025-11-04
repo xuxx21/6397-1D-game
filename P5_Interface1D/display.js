@@ -124,16 +124,16 @@ class Display {
     }
   }
 
-  // 目标扇形（局部坐标，REVEAL 用）——只画白框
-  drawTargetSectorLocal(targetHue, segments) {
+  // 目标扇形（局部坐标，REVEAL 用）——参数改为 angleDeg，并带颜色
+  drawTargetSectorLocal(targetAngleDeg, segments, strokeCol) {
     const step = 360 / segments;
-    const idx  = floor(((targetHue % 360) + 360) % 360 / step);
+    const idx  = floor(((targetAngleDeg % 360) + 360) % 360 / step);
     const segAngle = TWO_PI / segments;
     const a0 = -HALF_PI + idx * segAngle;
     const a1 = a0 + segAngle;
 
     noFill();
-    stroke(255);
+    stroke(strokeCol);
     strokeWeight(4);
     arc(0, 0, this.wheelRadiusOuter * 2 + 6, this.wheelRadiusOuter * 2 + 6, a0, a1);
     arc(0, 0, this.wheelRadiusInner * 2 - 6, this.wheelRadiusInner * 2 - 6, a0, a1);
@@ -164,14 +164,15 @@ class Display {
     pop();
   }
 
-  // 差距线（局部坐标）
-  drawDifferenceLineLocal(playerPos, targetHue, segments, strokeCol) {
+  // 差距线（局部坐标）：从玩家位置连到某个目标 angleDeg
+  drawDifferenceLineLocal(playerPos, targetAngleDeg, segments, strokeCol) {
     const step = 360 / segments;
-    const idxT = floor(((targetHue % 360) + 360) % 360 / step);
+    const idxT = floor(((targetAngleDeg % 360) + 360) % 360 / step);
     const segAngle = TWO_PI / segments;
 
     const { a0: aP0, a1: aP1 } = this.posToSegmentAngles(playerPos, segments);
     const midP = (aP0 + aP1) * 0.5;
+
     const aT0 = -HALF_PI + idxT * segAngle;
     const aT1 = aT0 + segAngle;
     const midT = (aT0 + aT1) * 0.5;
@@ -232,7 +233,6 @@ class Display {
         const targetHue = controller.targetHue || 0;
         this.drawTopWindow(cx, cy, targetHue, windowArcDeg);
 
-        // 🔴🔵 这里改回全局版绘制，所以红蓝会围绕 (cx,cy) 出现
         this.drawPlayerSectorByPos(cx, cy, playerOne.position, segments,
           color(255, 0, 0, 210), color(255));
         this.drawPlayerSectorByPos(cx, cy, playerTwo.position, segments,
@@ -244,26 +244,41 @@ class Display {
       }
 
       case "REVEAL": {
-        const targetHue = controller.targetHue || 0;
-        push(); translate(cx, cy);
-        this.drawWheelFull(0, 0, segments, targetHue, 80, 80, 160);
-        this.drawTargetSectorLocal(targetHue, segments);
+        const wheelOffset = controller.targetHue || 0;
+        const redAngle  = controller.redTargetAngleDeg  ?? 0;
+        const blueAngle = controller.blueTargetAngleDeg ?? 0;
+
+        push();
+        translate(cx, cy);
+
+        // 展开“旋转后”的整圈色轮
+        this.drawWheelFull(0, 0, segments, wheelOffset, 80, 80, 160);
+
+        // 两个目标位置：红/蓝各一个白框（带一点色调）
+        this.drawTargetSectorLocal(redAngle,  segments, color(255, 160, 160));
+        this.drawTargetSectorLocal(blueAngle, segments, color(160, 190, 255));
+
+        // 玩家实际选择位置
         this.drawPlayerSectorByPosLocal(playerOne.position, segments,
           color(255, 60, 60, 230), color(255));
         this.drawPlayerSectorByPosLocal(playerTwo.position, segments,
           color(60, 160, 255, 230), color(255));
-        this.drawDifferenceLineLocal(playerOne.position, targetHue, segments, color(255,120,120));
-        this.drawDifferenceLineLocal(playerTwo.position, targetHue, segments, color(120,180,255));
+
+        // 误差线：R 连到红目标，B 连到蓝目标
+        this.drawDifferenceLineLocal(playerOne.position, redAngle,  segments, color(255, 140, 140));
+        this.drawDifferenceLineLocal(playerTwo.position, blueAngle, segments, color(140, 190, 255));
+
         pop();
 
         this.drawHUD(controller.round, p1Score, p2Score);
-        this.drawRoundGains(controller?.lastP1Gain||0, controller?.lastP2Gain||0);
+        this.drawRoundGains(controller?.lastP1Gain || 0, controller?.lastP2Gain || 0);
         break;
       }
 
       case "SCORE":
         for (let i = 0; i < this.displaySize; i++) {
-          fill(this.displayBuffer[i]); rect(i*this.pixelSize,0,this.pixelSize,this.pixelSize);
+          fill(this.displayBuffer[i]);
+          rect(i * this.pixelSize, 0, this.pixelSize, this.pixelSize);
         }
         push(); fill(0,180); noStroke(); rect(0,0,width,height); pop();
         this.drawHUD(controller.round, p1Score, p2Score);
