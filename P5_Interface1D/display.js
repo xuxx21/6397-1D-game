@@ -13,7 +13,6 @@ class Display {
     this.wheelRadiusOuter = Math.max(80, Math.min(width, height) * 0.45);
     this.wheelRadiusInner = this.wheelRadiusOuter * 0.65;
     this.hudMargin        = 18;
-
     this.revealAnimT = 0;
   }
 
@@ -61,11 +60,10 @@ class Display {
   drawWheelFull(cx, cy, segments, hueOffsetDeg = 0, saturation = 100, brightness = 100, alpha = 255) {
     push();
     translate(cx, cy);
-    // 不再几何 rotate，而是用 hueOffsetDeg 旋转色相
     for (let i = 0; i < segments; i++) {
       const a0 = -HALF_PI + i * TWO_PI / segments;
       const a1 = -HALF_PI + (i + 1) * TWO_PI / segments;
-      const hue = (hueOffsetDeg + i * (360 / segments)) % 360; // i=0 那一格色相 = hueOffsetDeg
+      const hue = (hueOffsetDeg + i * (360 / segments)) % 360;
       const col = this.hueToCol(hue, saturation, brightness, alpha);
       this.drawRingSegment(0, 0, this.wheelRadiusOuter, this.wheelRadiusInner, a0, a1, col);
     }
@@ -79,11 +77,9 @@ class Display {
     const a1 = -HALF_PI + halfArc;
 
     const col = this.hueToCol(windowHueDeg);
-
     push();
     translate(cx, cy);
     this.drawRingSegment(0, 0, this.wheelRadiusOuter, this.wheelRadiusInner, a0, a1, col);
-
     noFill();
     stroke(255, 200);
     strokeWeight(1.5);
@@ -94,28 +90,14 @@ class Display {
 
   // === 按 position 对齐到当前 segments（保证和色盘格子一样宽）===
   posToSegmentAngles(pos, segments) {
-    const u = (pos % this.displaySize) / this.displaySize;   // 0..1
-    const idx = floor(constrain(u, 0, 0.999999) * segments); // 0..segments-1
+    const u = (pos % this.displaySize) / this.displaySize;
+    const idx = floor(constrain(u, 0, 0.999999) * segments);
     const segAngle = TWO_PI / segments;
     const a0 = -HALF_PI + idx * segAngle;
     const a1 = a0 + segAngle;
     return { a0, a1, idx };
   }
 
-  // —— 全局坐标版（GUESS 阶段用）——
-  drawPlayerSectorByPos(cx, cy, pos, segments, fillCol, outlineCol = null) {
-    const { a0, a1 } = this.posToSegmentAngles(pos, segments);
-    this.drawRingSegment(cx, cy, this.wheelRadiusOuter, this.wheelRadiusInner, a0, a1, fillCol);
-    if (outlineCol) {
-      noFill();
-      stroke(outlineCol);
-      strokeWeight(2);
-      arc(cx, cy, this.wheelRadiusOuter * 2, this.wheelRadiusOuter * 2, a0, a1);
-      arc(cx, cy, this.wheelRadiusInner * 2, this.wheelRadiusInner * 2, a0, a1);
-    }
-  }
-
-  // —— 局部坐标版（REVEAL 里，在 push+translate 内用）——
   drawPlayerSectorByPosLocal(pos, segments, fillCol, outlineCol = null) {
     const { a0, a1 } = this.posToSegmentAngles(pos, segments);
     this.drawRingSegment(0, 0, this.wheelRadiusOuter, this.wheelRadiusInner, a0, a1, fillCol);
@@ -128,25 +110,7 @@ class Display {
     }
   }
 
-  // 目标扇形（全局坐标，暂主要用于 GUESS 以外情况）
-  drawTargetSector(cx, cy, targetHue, segments) {
-    const step = 360 / segments;
-    const idx  = floor(((targetHue % 360) + 360) % 360 / step);
-    const segAngle = TWO_PI / segments;
-    const a0 = -HALF_PI + idx * segAngle;
-    const a1 = a0 + segAngle;
-
-    const c = this.hueToCol(idx * step, 100, 100, 220);
-    this.drawRingSegment(cx, cy, this.wheelRadiusOuter, this.wheelRadiusInner, a0, a1, c);
-
-    noFill();
-    stroke(255);
-    strokeWeight(2);
-    arc(cx, cy, this.wheelRadiusOuter * 2, this.wheelRadiusOuter * 2, a0, a1);
-    arc(cx, cy, this.wheelRadiusInner * 2, this.wheelRadiusInner * 2, a0, a1);
-  }
-
-  // 目标扇形（局部坐标，REVEAL 用）
+  // 目标扇形（局部坐标，REVEAL 用）——只画白框
   drawTargetSectorLocal(targetHue, segments) {
     const step = 360 / segments;
     const idx  = floor(((targetHue % 360) + 360) % 360 / step);
@@ -154,15 +118,11 @@ class Display {
     const a0 = -HALF_PI + idx * segAngle;
     const a1 = a0 + segAngle;
 
-    const c = this.hueToCol(idx * step, 100, 100, 230);
-    this.drawRingSegment(0, 0, this.wheelRadiusOuter, this.wheelRadiusInner, a0, a1, c);
-
-    // 目标加更明显的粗轮廓
     noFill();
     stroke(255);
-    strokeWeight(3.5);
-    arc(0, 0, this.wheelRadiusOuter * 2 + 4, this.wheelRadiusOuter * 2 + 4, a0, a1);
-    arc(0, 0, this.wheelRadiusInner * 2 - 4, this.wheelRadiusInner * 2 - 4, a0, a1);
+    strokeWeight(4);
+    arc(0, 0, this.wheelRadiusOuter * 2 + 6, this.wheelRadiusOuter * 2 + 6, a0, a1);
+    arc(0, 0, this.wheelRadiusInner * 2 - 6, this.wheelRadiusInner * 2 - 6, a0, a1);
   }
 
   // HUD：总分 + 回合 + （可选）倒计时
@@ -172,52 +132,44 @@ class Display {
     fill(255);
     textSize(14);
     textAlign(LEFT, TOP);
-    const tl = timeLeftMs != null ? ` | ${ (timeLeftMs/1000).toFixed(1) }s` : "";
-    text(`Round ${round} | P1: ${p1Score}  P2: ${p2Score}${tl}`, this.hudMargin, this.hudMargin);
+    const tl = timeLeftMs != null ? ` | ${(timeLeftMs/1000).toFixed(1)}s` : "";
+    text(`Round ${round} | R: ${p1Score}  B: ${p2Score}${tl}`, this.hudMargin, this.hudMargin);
     pop();
   }
 
-  // 显示本回合增加的分数（REVEAL 阶段）
+  // 本回合增加的分数（REVEAL 阶段）——改成 R / B
   drawRoundGains(p1Gain, p2Gain) {
     if ((!p1Gain || p1Gain === 0) && (!p2Gain || p2Gain === 0)) return;
-
     const cx = width / 2;
     const cy = height / 2;
-
     push();
     fill(255);
     textAlign(CENTER, CENTER);
     textSize(18);
-    text(`P1 +${p1Gain}    P2 +${p2Gain}`, cx, cy);
+    text(`R +${p1Gain}    B +${p2Gain}`, cx, cy);
     pop();
   }
 
-  // 用一条线可视化 “你和目标差了多少”（REVEAL 内局部坐标）
+  // 差距线（局部坐标）
   drawDifferenceLineLocal(playerPos, targetHue, segments, strokeCol) {
     const step = 360 / segments;
-    const idxT  = floor(((targetHue % 360) + 360) % 360 / step);
+    const idxT = floor(((targetHue % 360) + 360) % 360 / step);
     const segAngle = TWO_PI / segments;
 
     const { a0: aP0, a1: aP1 } = this.posToSegmentAngles(playerPos, segments);
     const midP = (aP0 + aP1) * 0.5;
-
     const aT0 = -HALF_PI + idxT * segAngle;
     const aT1 = aT0 + segAngle;
     const midT = (aT0 + aT1) * 0.5;
 
     const r = this.wheelRadiusOuter + 22;
-
-    const xP = cos(midP) * r;
-    const yP = sin(midP) * r;
-    const xT = cos(midT) * r;
-    const yT = sin(midT) * r;
+    const xP = cos(midP) * r, yP = sin(midP) * r;
+    const xT = cos(midT) * r, yT = sin(midT) * r;
 
     push();
     stroke(strokeCol);
     strokeWeight(3);
     line(xP, yP, xT, yT);
-
-    // 在玩家/目标位置各画一个小点
     noStroke();
     fill(strokeCol);
     circle(xP, yP, 8);
@@ -229,78 +181,45 @@ class Display {
   show() {
     background(0);
 
-    const cx = width / 2;
-    const cy = height / 2;
-
+    const cx = width / 2, cy = height / 2;
     const cfg = controller && controller.cfg ? controller.cfg : null;
     const roundIdx = Math.max(0, Math.min((controller?.round || 1) - 1,
-                          (cfg?.segmentsByRound?.length || 1) - 1));
+                      (cfg?.segmentsByRound?.length || 1) - 1));
     const segments = cfg ? cfg.segmentsByRound[roundIdx] : this.displaySize;
-
     const p1Score = playerOne?.score || 0;
     const p2Score = playerTwo?.score || 0;
-
-    // 顶部窗口的弧度：一格 = 360/segments
     const windowArcDeg = 360 / segments;
 
     switch (controller?.gameState) {
-      case "IDLE": {
-        // 原始位置的色轮（下一局开始前会回到这里，hueOffset=0）
+      case "IDLE":
         this.drawWheelFull(cx, cy, segments, 0, 100, 100, 220);
-        this.drawHUD(controller.round, p1Score, p2Score, null);
-        push();
-        fill(255);
-        textAlign(CENTER, CENTER);
-        textSize(16);
-        text("Twist the gear (or press R) to start", cx, height - this.hudMargin * 2);
-        pop();
+        this.drawHUD(controller.round, p1Score, p2Score);
+        push(); fill(255); textAlign(CENTER, CENTER); textSize(16);
+        text("Twist the gear (or press R) to start", cx, height - this.hudMargin * 2); pop();
         break;
-      }
 
       case "MIX": {
         const t = constrain((millis() - controller.mixStartMs) / controller.mixDurationMs, 0, 1);
         const e = this.easeOutCubic(t);
-        const a0 = 0;
-        const a1 = (controller.targetHue || 0);
-        const rotationDeg = lerp(a0, a1, e);
-
-        // 灰轮廓 + 顶端窗口（宽度 = 一格），窗口颜色根据 rotationDeg 变化
-        push();
-        noFill();
-        stroke(80);
-        strokeWeight(12);
-        ellipse(cx, cy, this.wheelRadiusOuter * 2, this.wheelRadiusOuter * 2);
-        stroke(40);
-        strokeWeight(12);
-        ellipse(cx, cy, this.wheelRadiusInner * 2, this.wheelRadiusInner * 2);
-        pop();
-
+        const rotationDeg = lerp(0, (controller.targetHue || 0), e);
+        push(); noFill(); stroke(80); strokeWeight(12);
+        ellipse(cx, cy, this.wheelRadiusOuter * 2); stroke(40); strokeWeight(12);
+        ellipse(cx, cy, this.wheelRadiusInner * 2); pop();
         this.drawTopWindow(cx, cy, rotationDeg, windowArcDeg);
-        this.drawHUD(controller.round, p1Score, p2Score, null);
+        this.drawHUD(controller.round, p1Score, p2Score);
         break;
       }
 
       case "GUESS": {
-        // 灰轮廓 + 顶端窗口（显示“你现在看到的这块颜色”，即 targetHue）
-        push();
-        noFill();
-        stroke(120);
-        strokeWeight(12);
-        ellipse(cx, cy, this.wheelRadiusOuter * 2, this.wheelRadiusOuter * 2);
-        stroke(40);
-        strokeWeight(12);
-        ellipse(cx, cy, this.wheelRadiusInner * 2, this.wheelRadiusInner * 2);
-        pop();
-
+        push(); noFill(); stroke(120); strokeWeight(12);
+        ellipse(cx, cy, this.wheelRadiusOuter * 2); stroke(40); strokeWeight(12);
+        ellipse(cx, cy, this.wheelRadiusInner * 2); pop();
         const targetHue = controller.targetHue || 0;
         this.drawTopWindow(cx, cy, targetHue, windowArcDeg);
-
-        // 玩家选中框：按 position 对齐分格（和顶部窗口一样宽）
-        this.drawPlayerSectorByPos(cx, cy, playerOne.position, segments,
+        this.drawPlayerSectorByPosLocal(playerOne.position, segments,
           color(255, 0, 0, 210), color(255));
-        this.drawPlayerSectorByPos(cx, cy, playerTwo.position, segments,
+        this.drawPlayerSectorByPosLocal(playerTwo.position, segments,
           color(0, 160, 255, 210), color(255));
-
         const msLeft = controller.timeLeft ? controller.timeLeft() : null;
         this.drawHUD(controller.round, p1Score, p2Score, msLeft);
         break;
@@ -308,68 +227,30 @@ class Display {
 
       case "REVEAL": {
         const targetHue = controller.targetHue || 0;
-
-        // 展开“spin 后的色轮”：让 12 点那一格的颜色 = targetHue
-        // 这样玩家感觉就是：刚才盖子掀开，看到了完整色盘的位置
-        push();
-        translate(cx, cy);
-
-        // 色轮整体透明一点，让玩家扇形更显眼
+        push(); translate(cx, cy);
         this.drawWheelFull(0, 0, segments, targetHue, 80, 80, 160);
-
-        // 目标位置（更粗的描边，显眼）
         this.drawTargetSectorLocal(targetHue, segments);
-
-        // 玩家选中框（更饱和更厚）
         this.drawPlayerSectorByPosLocal(playerOne.position, segments,
           color(255, 60, 60, 230), color(255));
         this.drawPlayerSectorByPosLocal(playerTwo.position, segments,
           color(60, 160, 255, 230), color(255));
-
-        // 可视化“差了多少”：从玩家中心到目标中心的一条线 + 小圆点
-        this.drawDifferenceLineLocal(playerOne.position, targetHue, segments, color(255, 120, 120));
-        this.drawDifferenceLineLocal(playerTwo.position, targetHue, segments, color(120, 180, 255));
-
+        this.drawDifferenceLineLocal(playerOne.position, targetHue, segments, color(255,120,120));
+        this.drawDifferenceLineLocal(playerTwo.position, targetHue, segments, color(120,180,255));
         pop();
-
-        this.drawHUD(controller.round, p1Score, p2Score, null);
-
-        // 本回合加分显示
-        const p1Gain = controller?.lastP1Gain || 0;
-        const p2Gain = controller?.lastP2Gain || 0;
-        this.drawRoundGains(p1Gain, p2Gain);
-
+        this.drawHUD(controller.round, p1Score, p2Score);
+        this.drawRoundGains(controller?.lastP1Gain||0, controller?.lastP2Gain||0);
         break;
       }
 
-      case "SCORE": {
+      case "SCORE":
         for (let i = 0; i < this.displaySize; i++) {
-          fill(this.displayBuffer[i]);
-          rect(i * this.pixelSize, 0, this.pixelSize, this.pixelSize);
+          fill(this.displayBuffer[i]); rect(i*this.pixelSize,0,this.pixelSize,this.pixelSize);
         }
-        push();
-        fill(0, 180);
-        noStroke();
-        rect(0, 0, width, height);
-        pop();
-
-        this.drawHUD(controller.round, p1Score, p2Score, null);
-        push();
-        fill(255);
-        textAlign(CENTER, CENTER);
-        textSize(18);
-        text("Winner color fills the screen. Twist gear (or press R) to restart.", cx, cy);
-        pop();
+        push(); fill(0,180); noStroke(); rect(0,0,width,height); pop();
+        this.drawHUD(controller.round, p1Score, p2Score);
+        push(); fill(255); textAlign(CENTER,CENTER); textSize(18);
+        text("Winner color fills the screen. Twist gear (or press R) to restart.", cx, cy); pop();
         break;
-      }
-
-      default: {
-        for (let i = 0; i < this.displaySize; i++) {
-          fill(this.displayBuffer[i]);
-          rect(i * this.pixelSize, 0, this.pixelSize, this.pixelSize);
-        }
-        break;
-      }
     }
   }
 }
