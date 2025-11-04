@@ -98,6 +98,20 @@ class Display {
     return { a0, a1, idx };
   }
 
+  // —— 全局坐标版（带 cx,cy，用于 GUESS 阶段）——
+  drawPlayerSectorByPos(cx, cy, pos, segments, fillCol, outlineCol = null) {
+    const { a0, a1 } = this.posToSegmentAngles(pos, segments);
+    this.drawRingSegment(cx, cy, this.wheelRadiusOuter, this.wheelRadiusInner, a0, a1, fillCol);
+    if (outlineCol) {
+      noFill();
+      stroke(outlineCol);
+      strokeWeight(2);
+      arc(cx, cy, this.wheelRadiusOuter * 2, this.wheelRadiusOuter * 2, a0, a1);
+      arc(cx, cy, this.wheelRadiusInner * 2, this.wheelRadiusInner * 2, a0, a1);
+    }
+  }
+
+  // —— 局部坐标版（REVEAL 里，在 push+translate 内用）——
   drawPlayerSectorByPosLocal(pos, segments, fillCol, outlineCol = null) {
     const { a0, a1 } = this.posToSegmentAngles(pos, segments);
     this.drawRingSegment(0, 0, this.wheelRadiusOuter, this.wheelRadiusInner, a0, a1, fillCol);
@@ -137,7 +151,7 @@ class Display {
     pop();
   }
 
-  // 本回合增加的分数（REVEAL 阶段）——改成 R / B
+  // 本回合增加的分数（REVEAL 阶段）——R / B
   drawRoundGains(p1Gain, p2Gain) {
     if ((!p1Gain || p1Gain === 0) && (!p2Gain || p2Gain === 0)) return;
     const cx = width / 2;
@@ -214,12 +228,16 @@ class Display {
         push(); noFill(); stroke(120); strokeWeight(12);
         ellipse(cx, cy, this.wheelRadiusOuter * 2); stroke(40); strokeWeight(12);
         ellipse(cx, cy, this.wheelRadiusInner * 2); pop();
+
         const targetHue = controller.targetHue || 0;
         this.drawTopWindow(cx, cy, targetHue, windowArcDeg);
-        this.drawPlayerSectorByPosLocal(playerOne.position, segments,
+
+        // 🔴🔵 这里改回全局版绘制，所以红蓝会围绕 (cx,cy) 出现
+        this.drawPlayerSectorByPos(cx, cy, playerOne.position, segments,
           color(255, 0, 0, 210), color(255));
-        this.drawPlayerSectorByPosLocal(playerTwo.position, segments,
+        this.drawPlayerSectorByPos(cx, cy, playerTwo.position, segments,
           color(0, 160, 255, 210), color(255));
+
         const msLeft = controller.timeLeft ? controller.timeLeft() : null;
         this.drawHUD(controller.round, p1Score, p2Score, msLeft);
         break;
@@ -237,6 +255,7 @@ class Display {
         this.drawDifferenceLineLocal(playerOne.position, targetHue, segments, color(255,120,120));
         this.drawDifferenceLineLocal(playerTwo.position, targetHue, segments, color(120,180,255));
         pop();
+
         this.drawHUD(controller.round, p1Score, p2Score);
         this.drawRoundGains(controller?.lastP1Gain||0, controller?.lastP2Gain||0);
         break;
