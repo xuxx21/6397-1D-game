@@ -1,4 +1,10 @@
 // This is where your state machines and game logic lives
+// ===================================================
+// Controller.js — game logic + LED serial integration
+// For: 1D Color-Wheel Guessing Game
+// Author: Xiaoxi Xu 
+// ===================================================
+
 class Controller {
   constructor() {
     this.gameState = "IDLE";
@@ -15,31 +21,25 @@ class Controller {
     this.guessEndMs = 0;
 
     // REVEAL timing
-    this.revealDurationMs = 10000; // how long to pause on REVEAL (ms)
+    this.revealDurationMs = 3000; // how long to pause on REVEAL (ms)
     this.revealEndMs = null;
+    this.revealLedOffSent = false; // 🆕 REVEAL 阶段结束时是否已经关过灯
 
-    // 这一轮顶部窗口显示的色相（旋转后 12 点方向的颜色）
+    // 色相配置
     this.targetHue = 0;
-
-    // 整个色轮的“配色偏移角度”（REVEAL 阶段用）
     this.wheelHueOffset = 0;
-
-    // ===== 每个玩家要猜的“自己的颜色” =====
-    // 原始色轮上：红/蓝的基准色相（可以在 config 里覆盖）
-    this.redBaseHue  = this.cfg.redBaseHue  ?? 0;   // 例如 0° = 红
-    this.blueBaseHue = this.cfg.blueBaseHue ?? 240; // 例如 240° = 蓝
-
-    // 本轮旋转完之后，红/蓝真实所在的角度位置（0..360，相对 12 点方向）
+    this.redBaseHue  = this.cfg.redBaseHue  ?? 0;
+    this.blueBaseHue = this.cfg.blueBaseHue ?? 240;
     this.redTargetAngleDeg  = 0;
     this.blueTargetAngleDeg = 0;
 
-    // hardware trigger latch
+    // trigger latch
     this._gearTriggerLatched = false;
 
-    // keyboard move speed (deg/sec)
+    // speed
     this.keyboardSpeedDegPerSec = this.cfg.keyboardSpeedDegPerSec || 220;
 
-    // 记录每一回合新加的分数，用于在 REVEAL 阶段中间显示
+    // scores
     this.lastP1Gain = 0;
     this.lastP2Gain = 0;
   }
@@ -50,7 +50,7 @@ class Controller {
   }
 
   releaseGearTrigger() {
-    // optional: currently no-op
+    // optional
   }
 
   gearTriggeredOnce() {
@@ -63,15 +63,10 @@ class Controller {
 
   // ---- round helpers ----
   startMix() {
-    // 随机这轮“旋转后 12 点方向的颜色”
+    // 随机“旋转后顶部颜色”
     this.targetHue = random(0, 360);
-
-    // 色轮配色偏移 = 顶部窗口颜色
     this.wheelHueOffset = this.targetHue;
 
-    // 根据这轮旋转，算出“红/蓝真实位置”的角度（0..360）
-    // 推导：色轮上某个角度 angle 对应的颜色 = (targetHue + angle) % 360
-    // 要找颜色 = redBaseHue 时的 angle => angle = redBaseHue - targetHue（mod 360）
     this.redTargetAngleDeg  = (this.redBaseHue  - this.targetHue + 360) % 360;
     this.blueTargetAngleDeg = (this.blueBaseHue - this.targetHue + 360) % 360;
 
@@ -84,12 +79,19 @@ class Controller {
     this.guessEndMs = millis() + t;
 
     this.revealEndMs = null;
+    this.revealLedOffSent = false; // 🆕 新一轮开始，重置关灯标记
     this.lastP1Gain = 0;
     this.lastP2Gain = 0;
 
     if (typeof collisionAnimation?.startMix === "function") {
       collisionAnimation.startMix(this.targetHue, this.mixDurationMs);
     }
+
+    // === MIX 启动前先关一次灯，保证状态干净 ===
+    serialWrite("LED:OFF");
+    // 然后转盘开始旋转：灯带彩虹跑动
+    serialWrite("LED:RAINBOW");
+
     this.gameState = "MIX";
   }
 
@@ -98,7 +100,6 @@ class Controller {
   }
 
   // ---- scoring math ----
-  // 把玩家位置映射到“圆周角度 0..360”（相对 12 点方向）
   playerPosToAngleDeg(player) {
     const size = player.displaySize || display.displaySize || 360;
     return (player.position % size) * (360 / size);
@@ -114,7 +115,7 @@ class Controller {
     return Math.round(Math.max(0, sMax * (1 - distDeg / 180)));
   }
 
-  // ---- 连续移动：用 sketch.js 的 p1Left 等变量驱动！----
+  // ---- player movement ----
   updatePlayersFromKeyboardContinuous() {
     if (this.gameState !== "GUESS") return;
 
@@ -145,7 +146,7 @@ class Controller {
   // ---- main update ----
   update() {
     switch (this.gameState) {
-
+      // ---------------------------
       case "IDLE": {
         display.clear();
         if (this.gearTriggeredOnce()) {
@@ -154,14 +155,19 @@ class Controller {
         break;
       }
 
+      // ---------------------------
       case "MIX": {
         display.clear();
         if (millis() - this.mixStartMs >= this.mixDurationMs) {
           this.gameState = "GUESS";
+
+          // === MIX→GUESS：关灯（从彩虹切到纯游戏）===
+          serialWrite("LED:OFF");
         }
         break;
       }
 
+      // ---------------------------
       case "GUESS": {
         this.updatePlayersFromKeyboardContinuous();
         display.clear();
@@ -169,8 +175,8 @@ class Controller {
         if (millis() >= this.guessEndMs) {
           this.gameState = "REVEAL";
           this.revealEndMs = millis() + this.revealDurationMs;
+          this.revealLedOffSent = false; // 🆕 每次进入 REVEAL 重置
 
-          // ===== 这里按“各自猜自己的颜色位置”来记分 =====
           const p1Angle = this.playerPosToAngleDeg(playerOne);
           const p2Angle = this.playerPosToAngleDeg(playerTwo);
 
@@ -200,17 +206,30 @@ class Controller {
               this.revealDurationMs
             );
           }
+
+          // === GUESS→REVEAL：赢家闪灯 ===
+          if (gain1 > gain2)      serialWrite("LED:RED");
+          else if (gain2 > gain1) serialWrite("LED:BLUE");
+          else                    serialWrite("LED:OFF");
         }
         break;
       }
 
+      // ---------------------------
       case "REVEAL": {
+        // 在 REVEAL 时间内仅由 Arduino 去负责闪烁
         if (this.revealEndMs != null && millis() >= this.revealEndMs) {
+          // === REVEAL 结束：只关一次灯 ===
+          if (!this.revealLedOffSent) {
+            serialWrite("LED:OFF");
+            this.revealLedOffSent = true;
+          }
           this.gameState = "SCORE";
         }
         break;
       }
 
+      // ---------------------------
       case "SCORE": {
         if (this.round >= this.cfg.maxRounds) {
           score.winner = (playerOne.score >= playerTwo.score)
@@ -234,6 +253,7 @@ class Controller {
         break;
       }
 
+      // ---------------------------
       default:
         break;
     }
@@ -243,10 +263,21 @@ class Controller {
 // ---------- Serial input hook ----------
 function onSerialData(data) {
   let msg = data.trim();
-  if (msg === "G") {
-    controller.latchGearTrigger();
-  }
-  if (msg === "STOP") {
-    controller.releaseGearTrigger();
+  if (msg === "G") controller.latchGearTrigger();
+  if (msg === "STOP") controller.releaseGearTrigger();
+}
+
+// ---------- Serial output helper ----------
+function serialWrite(msg) {
+  try {
+    if (window.serial && typeof window.serial.write === "function") {
+      window.serial.write(msg + "\n");
+    } else if (typeof serial !== "undefined" && serial?.write) {
+      serial.write(msg + "\n");
+    } else {
+      console.log("[SERIAL OUT]", msg);
+    }
+  } catch (e) {
+    console.warn("Serial write failed:", e);
   }
 }

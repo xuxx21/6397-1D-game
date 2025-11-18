@@ -1,3 +1,4 @@
+<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
@@ -5,8 +6,6 @@
   <link rel="stylesheet" href="style.css">
 
   <script language="javascript" type="text/javascript" src="https://cdn.jsdelivr.net/npm/p5@1.2.0/lib/p5.min.js"></script>
-  <!-- uncomment lines below to include extra p5 libraries -->
-  <!--<script language="javascript" src="https://cdn.jsdelivr.net/npm/p5@1.2.0/lib/addons/p5.sound.min.js"></script>-->
   <script language="javascript" type="text/javascript" src="player.js"></script>
   <script language="javascript" type="text/javascript" src="controller.js"></script>
   <script language="javascript" type="text/javascript" src="display.js"></script>
@@ -15,6 +14,14 @@
 </head>
 
 <body>
-  
+  <!-- 固定在左上角的串口连接按钮 -->
+  <button
+    id="serialButton"
+    onclick="connectSerial()"
+    style="position: fixed; left: 10px; top: 10px; z-index: 9999; padding: 6px 10px;"
+  >
+    Connect Serial
+  </button>
 </body>
 </html>
+

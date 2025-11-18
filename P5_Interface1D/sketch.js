@@ -3,6 +3,51 @@
   October 27, 2025
   Xiaoxi Xu & Lisa (Queen of Smooth!)
 */ /////////////////////////////////////
+let port;
+let writer;
+
+async function connectSerial() {
+  if (!("serial" in navigator)) {
+    alert("当前浏览器不支持 WebSerial（建议用 Chrome/Edge 2020 之后的版本）");
+    return;
+  }
+
+  try {
+    // 1. 弹出“选择端口”窗口
+    const selectedPort = await navigator.serial.requestPort();
+    // 如果用户点“取消”，上面这行会抛错，直接被下面 catch 接住
+
+    // 2. 打开串口
+    await selectedPort.open({ baudRate: 9600 });
+
+    // 3. 记录全局 port / writer
+    port = selectedPort;
+    writer = port.writable.getWriter();
+
+    console.log("✅ Serial connected!");
+  } catch (err) {
+    // 用户点了“取消” → NotFoundError
+    if (err.name === "NotFoundError") {
+      console.log("ℹ️ 串口连接已取消（没有选择端口）。");
+    } else {
+      console.error("❌ 串口连接失败：", err);
+      alert("串口连接失败，可以查看控制台错误信息。");
+    }
+  }
+}
+
+// 用于从网页向 Arduino 发送消息
+async function serialWrite(msg) {
+  if (!writer) {
+    console.warn("❌ Serial not connected yet");
+    return;
+  }
+  const data = new TextEncoder().encode(msg + "\n");
+  await writer.write(data);
+  console.log("➡️ Sent:", msg);
+}
+
+
 // ====== Game Canvas / Display ======
 let displaySize = 30; // number of columns (1D "pixels")
 let pixelSize = 30; // visual size of each pixel（仅作内部比例使用，不再决定画布高度）
@@ -27,9 +72,7 @@ let gameConfig = {
   spinDurationMs: 1500 // time-based animation, no physics
 };
 
-// ===================================
-// Lisa 键盘修复神器！必须在这里！
-// ===================================
+
 let p1Left = false, p1Right = false;
 let p2Left = false, p2Right = false;
 
