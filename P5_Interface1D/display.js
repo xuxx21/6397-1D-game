@@ -56,7 +56,7 @@ class Display {
     endShape(CLOSE);
   }
 
-  // 画完整色轮：hueOffsetDeg 控制“12 点方向那一格”的颜色
+  // 画完整色轮：hueOffsetDeg 控制"12 点方向那一格"的颜色
   drawWheelFull(cx, cy, segments, hueOffsetDeg = 0, saturation = 100, brightness = 100, alpha = 255) {
     push();
     translate(cx, cy);
@@ -139,7 +139,7 @@ class Display {
     arc(0, 0, this.wheelRadiusInner * 2 - 6, this.wheelRadiusInner * 2 - 6, a0, a1);
   }
 
-  // ====== GUESS 阶段用：多块“提示扇形” ======
+  // ====== GUESS 阶段用：多块"提示扇形" ======
   // centerHueDeg: 顶部那一格的色相（= controller.targetHue）
   // windowCount: 想露出多少块（包含顶部那一格）
   drawGuessHintWindows(cx, cy, segments, centerHueDeg, windowCount) {
@@ -181,15 +181,29 @@ class Display {
     }
   }
 
-  // HUD：总分 + 回合 + （可选）倒计时
+  // HUD：总分 + 回合 + （可选）倒计时 —— 现在显示在圆环中心
   drawHUD(round, p1Score, p2Score, timeLeftMs = null) {
+    const cx = width / 2;
+    const cy = height / 2;
+    
     push();
-    noStroke();
+    textAlign(CENTER, CENTER);
     fill(255);
-    textSize(14);
-    textAlign(LEFT, TOP);
-    const tl = timeLeftMs != null ? ` | ${(timeLeftMs/1000).toFixed(1)}s` : "";
-    text(`Round ${round} | R: ${p1Score}  B: ${p2Score}${tl}`, this.hudMargin, this.hudMargin);
+    
+    // 回合数显示在最上方
+    textSize(16);
+    text(`Round ${round}`, cx, cy - 30);
+    
+    // 分数显示在中间
+    textSize(20);
+    text(`R: ${p1Score}  B: ${p2Score}`, cx, cy);
+    
+    // 倒计时显示在下方（如果有的话）
+    if (timeLeftMs != null) {
+      textSize(18);
+      text(`${(timeLeftMs/1000).toFixed(1)}s`, cx, cy + 30);
+    }
+    
     pop();
   }
 
@@ -202,7 +216,7 @@ class Display {
     fill(255);
     textAlign(CENTER, CENTER);
     textSize(18);
-    text(`R +${p1Gain}    B +${p2Gain}`, cx, cy);
+    text(`R +${p1Gain}    B +${p2Gain}`, cx, cy + 60);
     pop();
   }
 
@@ -342,7 +356,7 @@ class Display {
         push();
         translate(cx, cy);
 
-        // 展开“旋转后”的整圈色轮（半透明，衬托玩家块）
+        // 展开"旋转后"的整圈色轮（半透明，衬托玩家块）
         this.drawWheelFull(0, 0, segments, wheelOffset, 80, 80, 160);
 
         // 两个目标位置：红/蓝各一个框
@@ -381,7 +395,7 @@ class Display {
         fill(255); 
         textAlign(CENTER,CENTER); 
         textSize(18);
-        text("Winner color fills the screen. Twist gear (or press R) to restart.", cx, cy); 
+        text("Winner color fills the screen. Twist gear (or press R) to restart.", cx, cy + 80); 
         pop();
         break;
     }
