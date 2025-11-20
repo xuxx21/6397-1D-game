@@ -11,17 +11,155 @@
   <script language="javascript" type="text/javascript" src="display.js"></script>
   <script language="javascript" type="text/javascript" src="animation.js"></script>
   <script language="javascript" type="text/javascript" src="sketch.js"></script>
+
+  <!-- ✅ 新增：折叠按钮样式 -->
+  <style>
+    /* 折叠按钮容器 */
+    .serial-dropdown {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      z-index: 9999;
+    }
+
+    /* 三角形按钮 */
+    .toggle-button {
+      width: 32px;
+      height: 32px;
+      background: rgba(255, 255, 255, 0.15);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s ease;
+      backdrop-filter: blur(10px);
+    }
+
+    .toggle-button:hover {
+      background: rgba(255, 255, 255, 0.25);
+      border-color: rgba(255, 255, 255, 0.5);
+    }
+
+    /* 三角形图标 */
+    .triangle {
+      width: 0;
+      height: 0;
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+      border-top: 8px solid rgba(255, 255, 255, 0.8);
+      transition: transform 0.3s ease;
+    }
+
+    /* 展开时旋转三角形 */
+    .serial-dropdown.expanded .triangle {
+      transform: rotate(180deg);
+    }
+
+    /* 下拉内容 */
+    .dropdown-content {
+      margin-top: 8px;
+      background: rgba(30, 30, 30, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      padding: 12px;
+      max-height: 0;
+      overflow: hidden;
+      opacity: 0;
+      transition: all 0.3s ease;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+      min-width: 150px;
+    }
+
+    .serial-dropdown.expanded .dropdown-content {
+      max-height: 300px;
+      opacity: 1;
+    }
+
+    /* 连接按钮样式 */
+    #serialButton {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all 0.2s ease;
+      width: 100%;
+    }
+
+    #serialButton:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    #serialButton:active {
+      transform: translateY(0);
+    }
+
+    /* 状态文本 */
+    .status-text {
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 12px;
+      margin-top: 8px;
+      text-align: center;
+      font-family: Arial, sans-serif;
+    }
+  </style>
 </head>
 
 <body>
-  <!-- 固定在左上角的串口连接按钮 -->
-  <button
-    id="serialButton"
-    onclick="connectSerial()"
-    style="position: fixed; left: 10px; top: 10px; z-index: 9999; padding: 6px 10px;"
-  >
-    Connect Serial
-  </button>
+  <!-- ✅ 替换原按钮为折叠式控件 -->
+  <div class="serial-dropdown" id="serialDropdown">
+    <div class="toggle-button" id="toggleButton">
+      <div class="triangle"></div>
+    </div>
+    <div class="dropdown-content">
+      <button id="serialButton" onclick="connectSerial()">
+        Connect Serial
+      </button>
+      <div class="status-text" id="statusText">
+        Not connected
+      </div>
+    </div>
+  </div>
+
+  <!-- ✅ 新增：折叠功能脚本 -->
+  <script>
+    // 等待 DOM 加载完成
+    window.addEventListener('DOMContentLoaded', () => {
+      const dropdown = document.getElementById('serialDropdown');
+      const toggleButton = document.getElementById('toggleButton');
+      let isExpanded = false;
+
+      // 切换展开/折叠
+      toggleButton.addEventListener('click', (e) => {
+        e.stopPropagation();
+        isExpanded = !isExpanded;
+        if (isExpanded) {
+          dropdown.classList.add('expanded');
+        } else {
+          dropdown.classList.remove('expanded');
+        }
+      });
+
+      // 点击其他地方自动收起
+      document.addEventListener('click', (e) => {
+        if (!dropdown.contains(e.target) && isExpanded) {
+          isExpanded = false;
+          dropdown.classList.remove('expanded');
+        }
+      });
+
+      // 防止点击下拉内容时收起
+      dropdown.addEventListener('click', (e) => {
+        e.stopPropagation();
+      });
+    });
+  </script>
 </body>
 </html>
-
