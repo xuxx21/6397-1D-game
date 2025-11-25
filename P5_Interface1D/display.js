@@ -273,29 +273,38 @@ class Display {
       }
 
       case "REVEAL": {
-        const wheelOffset = controller.targetHue || 0;
-        const redAngle  = controller.redTargetAngleDeg  ?? 0;
-        const blueAngle = controller.blueTargetAngleDeg ?? 0;
+        // ✅ 新增：判断获胜方
+        const g1 = controller?.lastP1Gain;
+        const g2 = controller?.lastP2Gain;
+        
+        let winnerCol;
+        if (typeof g1 === "number" && typeof g2 === "number" && g1 !== g2) {
+          if (g1 > g2) {
+            winnerCol = color(255, 60, 60);  // 红赢
+          } else {
+            winnerCol = color(60, 160, 255); // 蓝赢
+          }
+        } else {
+          winnerCol = color(180); // 平局灰
+        }
 
+        // ✅ 整个色轮显示获胜方颜色
         push();
         translate(cx, cy);
-
-        this.drawWheelFull(0, 0, segments, wheelOffset, 80, 80, 160);
-
-        this.drawTargetSectorLocal(redAngle,  segments, color(255, 160, 160));
-        this.drawTargetSectorLocal(blueAngle, segments, color(160, 190, 255));
-
-        this.drawPlayerSectorByPosLocal(
-          playerOne.position, segments,
-          color(255, 60, 60, 230), color(255)
-        );
-        this.drawPlayerSectorByPosLocal(
-          playerTwo.position, segments,
-          color(60, 160, 255, 230), color(255)
-        );
-
-        // 不画误差线
+        const segAngle = TWO_PI / segments;
+        for (let i = 0; i < segments; i++) {
+          const a0 = -HALF_PI + i * segAngle;
+          const a1 = a0 + segAngle;
+          this.drawRingSegment(
+            0, 0,
+            this.wheelRadiusOuter,
+            this.wheelRadiusInner,
+            a0, a1,
+            winnerCol
+          );
+        }
         pop();
+
         break;
       }
 
